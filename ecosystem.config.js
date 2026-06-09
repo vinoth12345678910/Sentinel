@@ -1,0 +1,40 @@
+module.exports = {
+  apps: [
+    {
+      name: 'sentinel',
+      script: 'server.js',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
+      kill_timeout: 5000,
+      max_restarts: 5,
+      cwd: __dirname,
+      env: {
+        NODE_ENV: 'production',
+      },
+      error_file: './logs/sentinel-error.log',
+      out_file: './logs/sentinel-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      merge_logs: true,
+    },
+    {
+      name: 'sentinel-monitors',
+      script: 'scripts/start-monitors.sh',
+      interpreter: 'bash',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      kill_timeout: 5000,
+      max_restarts: 5,
+      cwd: __dirname,
+      env: {
+        NODE_ENV: 'production',
+      },
+      error_file: './logs/monitors-error.log',
+      out_file: './logs/monitors-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      merge_logs: true,
+    },
+  ],
+};
