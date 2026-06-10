@@ -8,6 +8,7 @@ const pipelineService = require('../services/pipelineService');
 const logger = require('../services/loggerService');
 const { webhookRateLimiter } = require('../middleware/rateLimiter');
 const { validateRepoName } = require('../middleware/validateInput');
+const { writeEnvFile } = require('./env');
 
 const router = express.Router();
 
@@ -166,6 +167,9 @@ router.post('/webhook', webhookRateLimiter, express.raw({ type: 'application/jso
         logger.log(repoName, 'INFO', deployment.deployment_id, `Auto-assigned host_port: ${hostPort}`);
       }
     }
+
+    // Write env vars to .env.deployment before triggering pipeline
+    try { writeEnvFile(repoName); } catch (e) { logger.log(repoName, 'WARN', '-', `Failed to write env file: ${e.message}`); }
 
     pipelineService.trigger(repoName, deployment.deployment_id, repoUrl, commitHash, hostPort, containerPort, healthPath, branch);
     res.status(200).json({ deployment_id: deployment.deployment_id, is_preview: isPreview });
