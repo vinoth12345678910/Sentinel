@@ -129,8 +129,13 @@ router.patch('/apps/:repoName/domain', authMiddleware, apiRateLimiter, (req, res
   const app = appConfigService.getAppConfig(repoName);
   if (!app) return res.status(404).json({ message: 'App not found' });
 
+  const update = { domain };
+  if (req.body.ssl !== undefined) {
+    update.ssl = Boolean(req.body.ssl);
+  }
+
   try {
-    const updated = appConfigService.updateAppConfig(repoName, { domain });
+    const updated = appConfigService.updateAppConfig(repoName, update);
     res.json(updated);
   } catch (err) {
     res.status(500).json({ message: 'Failed to update domain' });

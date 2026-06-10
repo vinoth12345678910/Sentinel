@@ -53,5 +53,16 @@ nginx -t 2>&1 || {
 systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || log_warn "Could not reload nginx — reload manually"
 
 log_info "Nginx config live: http://$DOMAIN → localhost:$HOST_PORT"
+
+# Provision SSL if possible (non-blocking — app works via HTTP even if SSL fails)
+SSL_OK=0
+if [ -f "./provision-ssl.sh" ]; then
+    if ./provision-ssl.sh "$DOMAIN" 2>&1; then
+        SSL_OK=1
+        log_info "SSL provisioned for $DOMAIN"
+    fi
+fi
+
 echo "$DOMAIN"
+echo "SSL_OK=$SSL_OK"
 exit 0

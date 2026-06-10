@@ -122,14 +122,16 @@ else
 fi
 
 log_info "Stage 5/5: Configuring Nginx reverse proxy"
-NGINX_DOMAIN=$(run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" "$HEALTH_PATH" || echo "")
-if [ -n "$NGINX_DOMAIN" ]; then
+NGINX_OUTPUT=$(run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" "$HEALTH_PATH" || echo "||FAILED||")
+if [ "$NGINX_OUTPUT" != "||FAILED||" ]; then
+    NGINX_DOMAIN=$(echo "$NGINX_OUTPUT" | head -1)
+    SSL_OK=$(echo "$NGINX_OUTPUT" | grep "^SSL_OK=" | cut -d= -f2 || echo "0")
     log_info "Nginx configured for domain: $NGINX_DOMAIN"
     # Register domain with backend
     curl -s -o /dev/null -X PATCH "$BACKEND_URL/apps/$REPO_NAME/domain" \
         -H "Content-Type: application/json" \
         -H "x-api-key: $SENTINEL_API_KEY" \
-        -d "{\"domain\":\"$NGINX_DOMAIN\"}" || log_warn "Failed to register domain with backend"
+        -d "{\"domain\":\"$NGINX_DOMAIN\",\"ssl\":${SSL_OK:-false}}" || log_warn "Failed to register domain with backend"
 else
     log_warn "Nginx config generation failed — deployment still healthy but may not be accessible via domain"
 fi
