@@ -14,6 +14,10 @@ const { router: envRoutes } = require('./routes/env');
 const streamRoutes = require('./routes/deploymentStream');
 const domainRoutes = require('./routes/domains');
 const monitoringRoutes = require('./routes/monitoring');
+const teamRoutes = require('./routes/teams');
+const auditLogRoutes = require('./routes/auditLog');
+const userRoutes = require('./routes/users');
+const apiDocsRoutes = require('./routes/apiDocs');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -35,6 +39,10 @@ app.use('/', envRoutes);
 app.use('/', streamRoutes);
 app.use('/', domainRoutes);
 app.use('/', monitoringRoutes);
+app.use('/', teamRoutes);
+app.use('/', auditLogRoutes);
+app.use('/', userRoutes);
+app.use('/', apiDocsRoutes);
 
 const dashboardPath = path.join(__dirname, '..', 'dashboard');
 app.use('/dashboard', express.static(dashboardPath));

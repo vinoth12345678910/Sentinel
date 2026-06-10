@@ -59,6 +59,8 @@
         <a href="#/projects" class="nav-link" data-nav>Projects</a>
         <a href="#/deployments" class="nav-link" data-nav>Deployments</a>
         <a href="#/monitoring" class="nav-link" data-nav>Monitoring</a>
+        <a href="#/teams" class="nav-link" data-nav>Teams</a>
+        <a href="#/audit-log" class="nav-link" data-nav>Audit Log</a>
         <a href="#/settings" class="nav-link" data-nav>Settings</a>
         <a href="#/login" class="nav-link" onclick="APP.logout()" style="margin-left:auto;color:var(--red)">Logout</a>
       `;
@@ -655,6 +657,112 @@
     }
   }
 
+  async function renderTeams() {
+    showLoading();
+    try {
+      if (!(await checkAuth())) { renderLogin(); return; }
+      const teams = await API.listTeams().catch(() => { throw new Error('Admin access required'); });
+
+      $app.innerHTML = html`
+        <div class="page-header">
+          <h1>Teams</h1>
+          <p>Manage teams and members</p>
+        </div>
+        <div class="card">
+          <div class="card-title">New Team</div>
+          <form id="create-team-form" style="display:flex;gap:8px;align-items:flex-end">
+            <div class="form-group" style="flex:1;margin-bottom:0">
+              <label>Team Name</label>
+              <input type="text" id="team-name-input" class="form-input" required placeholder="my-team">
+            </div>
+            <button type="submit" class="btn btn-primary">Create</button>
+          </form>
+        </div>
+        <div class="card">
+          <div class="card-title">All Teams (${teams.length})</div>
+          ${teams.length === 0
+            ? '<div class="empty-state"><p>No teams yet.</p></div>'
+            : teams.map(t => html`
+              <div class="app-card" style="cursor:default">
+                <div class="app-card-left">
+                  <div>
+                    <div class="app-card-name">${escape(t.name)}</div>
+                    <div class="app-card-repo">${t.member_count} member(s) · ${escape(t.description || '')}</div>
+                  </div>
+                </div>
+                <div class="app-card-right">
+                  <button class="btn btn-danger btn-sm" onclick="APP.deleteTeam('${escape(t.id)}','${escape(t.name)}')">Delete</button>
+                </div>
+              </div>
+            `).join('')}
+        </div>
+      `;
+
+      const form = $('#create-team-form');
+      if (form) {
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const name = $('#team-name-input').value.trim();
+          if (!name) return;
+          try {
+            await API.createTeam(name);
+            $('#team-name-input').value = '';
+            renderTeams();
+          } catch (err) {
+            alert('Failed: ' + err.message);
+          }
+        });
+      }
+    } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
+      showError(err.message);
+    }
+  }
+
+  async function renderAuditLog() {
+    showLoading();
+    try {
+      if (!(await checkAuth())) { renderLogin(); return; }
+      const [entries, stats] = await Promise.all([
+        API.getAuditLog().catch(() => { throw new Error('Admin access required'); }),
+        API.getAuditLogStats().catch(() => ({ total: 0, last24h: 0, actions: [] })),
+      ]);
+
+      $app.innerHTML = html`
+        <div class="page-header">
+          <h1>Audit Log</h1>
+          <p>${stats.total} total entries · ${stats.last24h} in last 24h</p>
+        </div>
+        <div class="card">
+          <div class="card-title">Recent Activity</div>
+          ${entries.length === 0
+            ? '<div class="empty-state"><p>No audit log entries.</p></div>'
+            : html`
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Resource</th><th>Details</th></tr></thead>
+                  <tbody>
+                    ${entries.map(e => html`
+                      <tr>
+                        <td class="timestamp">${timeAgo(e.created_at)}</td>
+                        <td>${escape(e.username)}</td>
+                        <td><span class="badge badge-info">${escape(e.action)}</span></td>
+                        <td>${escape(e.resource_type || '')} ${e.resource_id ? escape('#' + e.resource_id) : ''}</td>
+                        <td style="font-size:12px;color:var(--text-secondary);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.details ? escape(JSON.stringify(e.details)) : ''}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+        </div>
+      `;
+    } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
+      showError(err.message);
+    }
+  }
+
   async function renderSettings() {
     showLoading();
     try {
@@ -840,6 +948,8 @@
     else if (hash === '/projects') { renderProjects(); }
     else if (hash.startsWith('/project/')) { renderProject(hash.slice(9)); }
     else if (hash === '/monitoring') { renderMonitoring(); }
+    else if (hash === '/teams') { renderTeams(); }
+    else if (hash === '/audit-log') { renderAuditLog(); }
     else if (hash === '/settings') { renderSettings(); }
     else if (hash === '/import') { renderImport(); }
     else if (hash.startsWith('/app/')) { renderApp(decodeURIComponent(hash.slice(5))); }
@@ -952,6 +1062,15 @@
         renderApp(repoName);
       } catch (err) {
         alert('Failed to remove domain: ' + err.message);
+      }
+    },
+    async deleteTeam(id, name) {
+      if (!confirm(`Delete team "${name}"?`)) return;
+      try {
+        await API.deleteTeam(id);
+        renderTeams();
+      } catch (err) {
+        alert('Failed: ' + err.message);
       }
     },
   };

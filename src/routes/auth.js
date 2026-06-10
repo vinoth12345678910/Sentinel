@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const { getDb } = require('../db');
 const authService = require('../services/authService');
+const auditLogService = require('../services/auditLogService');
 const { apiRateLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
@@ -39,6 +40,8 @@ router.post('/auth/register', apiRateLimiter, async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/auth',
     });
+
+    auditLogService.log(user, 'auth.register', 'user', user.id, { username });
 
     res.status(201).json({
       accessToken,
@@ -80,6 +83,8 @@ router.post('/auth/login', apiRateLimiter, async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/auth',
     });
+
+    auditLogService.log(user, 'auth.login', 'user', user.id, { username });
 
     res.json({
       accessToken,
