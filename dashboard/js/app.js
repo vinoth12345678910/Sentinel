@@ -350,11 +350,12 @@
     showLoading();
     try {
       if (!(await checkAuth())) { renderLogin(); return; }
-      const [app, deployments, envVars, projects] = await Promise.all([
+      const [app, deployments, envVars, projects, domains] = await Promise.all([
         API.getApp(repoName),
         API.listDeployments(),
         API.getEnvVars(repoName).catch(() => []),
         API.listProjects().catch(() => []),
+        API.listDomains(repoName).catch(() => []),
       ]);
 
       const appDeployments = deployments.filter(d => d.repo_name === repoName);
@@ -434,6 +435,40 @@
           </div>
         </div>
         <div class="card">
+          <div class="card-title">Custom Domains</div>
+          <div id="domains-area">
+            ${domains.length === 0
+              ? '<div class="empty-state"><p>No custom domains configured.</p></div>'
+              : html`
+                <div class="table-wrap">
+                  <table>
+                    <thead><tr><th>Domain</th><th>SSL</th><th>SSL Provisioned</th><th></th></tr></thead>
+                    <tbody>
+                      ${domains.map(d => html`
+                        <tr>
+                          <td><a href="https://${escape(d.domain)}" target="_blank" style="color:var(--accent);text-decoration:none">${escape(d.domain)}</a></td>
+                          <td>${d.ssl_enabled ? html`<span class="badge badge-success">Enabled</span>` : html`<span class="badge badge-info">No</span>`}</td>
+                          <td class="timestamp">${d.ssl_provisioned_at ? formatTime(d.ssl_provisioned_at) : '-'}</td>
+                          <td><button class="btn btn-danger btn-sm" onclick="APP.deleteDomain('${escape(repoName)}','${escape(d.id)}','${escape(d.domain)}')">Remove</button></td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `}
+            <form id="domain-form" style="display:flex;gap:8px;margin-top:12px;align-items:flex-end">
+              <div class="form-group" style="flex:1;margin-bottom:0">
+                <label>Domain</label>
+                <input type="text" class="form-input" id="domain-input" placeholder="app.example.com">
+              </div>
+              <label style="display:flex;align-items:center;gap:4px;margin-bottom:8px">
+                <input type="checkbox" id="domain-ssl" checked> SSL
+              </label>
+              <button type="submit" class="btn btn-primary">Add Domain</button>
+            </form>
+          </div>
+        </div>
+        <div class="card">
           <div class="card-title">Deployments (${appDeployments.length})</div>
           ${appDeployments.length === 0
             ? '<div class="empty-state"><p>No deployments yet.</p></div>'
@@ -478,6 +513,23 @@
           alert('Failed to set env var: ' + err.message);
         }
       });
+
+      const domainForm = $('#domain-form');
+      if (domainForm) {
+        domainForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const domain = $('#domain-input').value.trim();
+          const ssl_enabled = $('#domain-ssl') ? $('#domain-ssl').checked : true;
+          if (!domain) return;
+          try {
+            await API.addDomain(repoName, domain, ssl_enabled);
+            $('#domain-input').value = '';
+            renderApp(repoName);
+          } catch (err) {
+            alert('Failed to add domain: ' + err.message);
+          }
+        });
+      }
     } catch (err) {
       if (err.message.includes('Authentication')) { renderLogin(); return; }
       showError(err.message);
@@ -809,6 +861,15 @@
         router();
       } catch (err) {
         alert(`Import failed: ${err.message}`);
+      }
+    },
+    async deleteDomain(repoName, id, domain) {
+      if (!confirm(`Remove domain ${domain}?`)) return;
+      try {
+        await API.deleteDomain(repoName, id);
+        renderApp(repoName);
+      } catch (err) {
+        alert('Failed to remove domain: ' + err.message);
       }
     },
   };

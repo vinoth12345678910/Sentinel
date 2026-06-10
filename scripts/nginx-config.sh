@@ -4,7 +4,7 @@ set -e
 
 REPO_NAME=$1
 HOST_PORT=$2
-DOMAIN=$3
+DOMAIN_ARGS=$3
 
 validate_args "REPO_NAME" "$REPO_NAME" "HOST_PORT" "$HOST_PORT"
 
@@ -16,45 +16,43 @@ NGINX_ENABLED="/etc/nginx/sites-enabled"
 CONFIG_FILE="sentinel-$REPO_NAME.conf"
 CONFIG_PATH="$NGINX_AVAILABLE/$CONFIG_FILE"
 
-if [ -z "$DOMAIN" ]; then
-    DOMAIN="${REPO_NAME,,}.vinoth-sntl.uk"
+# Parse domain arguments: domain1:ssl_flag,domain2:ssl_flag,...
+DOMAINS=()
+SSL_DOMAINS=()
+HTTP_DOMAINS=()
+if [ -n "$DOMAIN_ARGS" ]; then
+    IFS=',' read -ra ENTRIES <<< "$DOMAIN_ARGS"
+    for entry in "${ENTRIES[@]}"; do
+        domain="${entry%%:*}"
+        ssl_flag="${entry##*:}"
+        DOMAINS+=("$domain")
+        if [ "$ssl_flag" = "1" ]; then
+            SSL_DOMAINS+=("$domain")
+        else
+            HTTP_DOMAINS+=("$domain")
+        fi
+    done
 fi
 
-log_info "Using domain: $DOMAIN"
+if [ ${#DOMAINS[@]} -eq 0 ]; then
+    DEFAULT_DOMAIN="${REPO_NAME,,}.vinoth-sntl.uk"
+    DOMAINS+=("$DEFAULT_DOMAIN")
+    HTTP_DOMAINS+=("$DEFAULT_DOMAIN")
+fi
 
-HTTP_BLOCK="server {
-    listen 80;
-    server_name $DOMAIN;
+SERVER_NAMES=$(IFS=' '; echo "${DOMAINS[*]}")
+log_info "Domains: $SERVER_NAMES"
 
-    client_max_body_size 5M;
-
-    location / {
-        proxy_pass http://localhost:$HOST_PORT;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Host \$host;
-        proxy_read_timeout 30s;
-        proxy_connect_timeout 10s;
-    }
-}"
-
-SSL_CERT="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
-SSL_KEY="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
-
-if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
-    log_info "SSL certificate found for $DOMAIN — generating HTTPS config"
-
-    cat > "$CONFIG_PATH" <<EOF
-server {
-    listen 80;
-    server_name $DOMAIN;
-    return 301 https://\$server_name\$request_uri;
-}
-
+# Generate SSL configs for each SSL domain
+SSL_SERVER_BLOCKS=""
+for domain in "${SSL_DOMAINS[@]}"; do
+    SSL_CERT="/etc/letsencrypt/live/$domain/fullchain.pem"
+    SSL_KEY="/etc/letsencrypt/live/$domain/privkey.pem"
+    if [ -f "$SSL_CERT" ] && [ -f "$SSL_KEY" ]; then
+        SSL_SERVER_BLOCKS+="
 server {
     listen 443 ssl http2;
-    server_name $DOMAIN;
+    server_name $domain;
 
     ssl_certificate $SSL_CERT;
     ssl_certificate_key $SSL_KEY;
@@ -73,10 +71,68 @@ server {
         proxy_connect_timeout 10s;
     }
 }
-EOF
+"
+    fi
+done
+
+HAS_SSL=${#SSL_DOMAINS[@]}
+HAS_HTTP=${#HTTP_DOMAINS[@]}
+
+cat > "$CONFIG_PATH" <<CFGEOF
+# Sentinel - $REPO_NAME
+# Generated on $(date)
+
+CFGEOF
+
+if [ "$HAS_SSL" -gt 0 ] && [ "$HAS_HTTP" -gt 0 ]; then
+    # HTTP redirect for non-SSL domains + SSL blocks
+    cat >> "$CONFIG_PATH" <<CFGEOF
+server {
+    listen 80;
+    server_name $(IFS=' '; echo "${HTTP_DOMAINS[*]}");
+    client_max_body_size 5M;
+    location / {
+        proxy_pass http://localhost:$HOST_PORT;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host \$host;
+        proxy_read_timeout 30s;
+        proxy_connect_timeout 10s;
+    }
+}
+
+$SSL_SERVER_BLOCKS
+CFGEOF
+elif [ "$HAS_SSL" -gt 0 ]; then
+    # All domains have SSL -> redirect all HTTP to HTTPS
+    cat >> "$CONFIG_PATH" <<CFGEOF
+server {
+    listen 80;
+    server_name $SERVER_NAMES;
+    return 301 https://\$server_name\$request_uri;
+}
+
+$SSL_SERVER_BLOCKS
+CFGEOF
 else
-    log_info "No SSL certificate found for $DOMAIN — generating HTTP-only config"
-    echo "$HTTP_BLOCK" > "$CONFIG_PATH"
+    # No SSL -> plain HTTP
+    cat >> "$CONFIG_PATH" <<CFGEOF
+server {
+    listen 80;
+    server_name $SERVER_NAMES;
+    client_max_body_size 5M;
+    location / {
+        proxy_pass http://localhost:$HOST_PORT;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host \$host;
+        proxy_read_timeout 30s;
+        proxy_connect_timeout 10s;
+    }
+}
+CFGEOF
 fi
 
 ln -sf "$CONFIG_PATH" "$NGINX_ENABLED/$CONFIG_FILE"
@@ -89,5 +145,5 @@ nginx -t 2>&1 || {
 
 systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || log_warn "Could not reload nginx — reload manually"
 
-log_info "Nginx config generated and loaded for $DOMAIN → localhost:$HOST_PORT"
+log_info "Nginx config generated and loaded for $REPO_NAME"
 exit 0

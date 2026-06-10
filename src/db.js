@@ -101,6 +101,19 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);
     CREATE INDEX IF NOT EXISTS idx_app_configs_project ON app_configs(project_id);
     CREATE INDEX IF NOT EXISTS idx_app_env_vars_app ON app_env_vars(repo_name);
+
+    CREATE TABLE IF NOT EXISTS custom_domains (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_name TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      ssl_enabled INTEGER NOT NULL DEFAULT 1,
+      ssl_provisioned_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(domain)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_custom_domains_repo ON custom_domains(repo_name);
   `);
 }
 

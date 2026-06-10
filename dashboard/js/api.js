@@ -89,5 +89,8 @@ const API = (() => {
     getEnvVars: (name) => request('GET', `/apps/${name}/env`),
     setEnvVar: (name, key, value) => request('POST', `/apps/${name}/env`, { key, value }),
     deleteEnvVar: (name, key) => request('DELETE', `/apps/${name}/env/${key}`),
+    listDomains: (name) => request('GET', `/apps/${name}/domains`),
+    addDomain: (name, domain, ssl_enabled) => request('POST', `/apps/${name}/domains`, { domain, ssl_enabled }),
+    deleteDomain: (name, id) => request('DELETE', `/apps/${name}/domains/${id}`),
   };
 })();
