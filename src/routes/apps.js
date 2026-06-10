@@ -29,7 +29,7 @@ router.get('/apps/:repoName', authMiddleware, apiRateLimiter, (req, res) => {
 
 router.post('/apps/:repoName/config', authMiddleware, apiRateLimiter, (req, res) => {
   const { repoName } = req.params;
-  const { health_path, container_port, host_port } = req.body;
+  const { health_path, container_port, host_port, project_id } = req.body;
 
   if (!validateRepoName(repoName)) {
     return res.status(400).json({ message: 'Invalid repository name' });
@@ -55,10 +55,9 @@ router.post('/apps/:repoName/config', authMiddleware, apiRateLimiter, (req, res)
     }
   }
 
-  const allowed = ['health_path', 'container_port', 'host_port'];
-  const extra = Object.keys(req.body).filter(k => !allowed.includes(k));
-  if (extra.length > 0) {
-    return res.status(400).json({ message: 'Unexpected fields' });
+  if (project_id !== undefined) {
+    const proj = require('../db').getDb().prepare('SELECT id FROM projects WHERE id = ?').get(project_id);
+    if (!proj) return res.status(400).json({ message: 'Project not found' });
   }
 
   const existing = appConfigService.getAppConfig(repoName);
@@ -66,6 +65,7 @@ router.post('/apps/:repoName/config', authMiddleware, apiRateLimiter, (req, res)
     return res.status(404).json({ message: 'App not found' });
   }
 
+  const db = require('../db').getDb();
   const updates = {};
   if (health_path !== undefined) updates.health_path = health_path;
   if (container_port !== undefined) updates.container_port = container_port;
@@ -73,10 +73,51 @@ router.post('/apps/:repoName/config', authMiddleware, apiRateLimiter, (req, res)
 
   try {
     const updated = appConfigService.updateAppConfig(repoName, updates);
+    if (project_id !== undefined) {
+      db.prepare('UPDATE app_configs SET project_id = ? WHERE repo_name = ?').run(project_id, repoName);
+      updated.project_id = project_id;
+    }
     res.json(updated);
   } catch (err) {
     res.status(500).json({ message: 'Failed to update app config' });
   }
+});
+
+router.patch('/apps/:repoName', authMiddleware, apiRateLimiter, (req, res) => {
+  const { repoName } = req.params;
+  const { project_id } = req.body;
+
+  if (!validateRepoName(repoName)) {
+    return res.status(400).json({ message: 'Invalid repository name' });
+  }
+
+  const app = appConfigService.getAppConfig(repoName);
+  if (!app) return res.status(404).json({ message: 'App not found' });
+
+  const db = require('../db').getDb();
+  db.prepare('INSERT OR IGNORE INTO app_configs (repo_name) VALUES (?)').run(repoName);
+
+  if (project_id !== undefined) {
+    if (project_id === null || project_id === '') {
+      db.prepare('UPDATE app_configs SET project_id = NULL WHERE repo_name = ?').run(repoName);
+    } else {
+      const proj = db.prepare('SELECT id FROM projects WHERE id = ?').get(project_id);
+      if (!proj) return res.status(400).json({ message: 'Project not found' });
+      db.prepare('UPDATE app_configs SET project_id = ? WHERE repo_name = ?').run(project_id, repoName);
+    }
+  }
+
+  const updated = appConfigService.getAppConfig(repoName);
+  const row = db.prepare('SELECT project_id FROM app_configs WHERE repo_name = ?').get(repoName);
+  updated.project_id = row ? row.project_id : null;
+
+  res.json(updated);
+});
+
+router.get('/apps/:repoName/db-check', authMiddleware, apiRateLimiter, (req, res) => {
+  const db = require('../db').getDb();
+  const row = db.prepare('SELECT * FROM app_configs WHERE repo_name = ?').get(req.params.repoName);
+  res.json({ row });
 });
 
 router.post('/apps/:repoName/rollback', authMiddleware, apiRateLimiter, (req, res) => {

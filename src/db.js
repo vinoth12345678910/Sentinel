@@ -42,6 +42,14 @@ function initSchema() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS app_configs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       repo_name TEXT UNIQUE NOT NULL,
@@ -50,8 +58,20 @@ function initSchema() {
       container_port INTEGER,
       host_port INTEGER,
       is_sentinel INTEGER DEFAULT 0,
+      project_id INTEGER,
       registered_at TEXT,
-      updated_at TEXT
+      updated_at TEXT,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS app_env_vars (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      repo_name TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value_encrypted TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(repo_name, key)
     );
 
     CREATE TABLE IF NOT EXISTS deployments (
@@ -79,6 +99,8 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_deployments_state ON deployments(state);
     CREATE INDEX IF NOT EXISTS idx_deployment_logs_deploy ON deployment_logs(deployment_id);
     CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token ON refresh_tokens(token);
+    CREATE INDEX IF NOT EXISTS idx_app_configs_project ON app_configs(project_id);
+    CREATE INDEX IF NOT EXISTS idx_app_env_vars_app ON app_env_vars(repo_name);
   `);
 }
 

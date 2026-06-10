@@ -3,6 +3,7 @@
   const $navLinks = document.querySelector('.nav-links');
 
   function $(sel, parent) { return (parent || document).querySelector(sel); }
+  function $$(sel, parent) { return (parent || document).querySelectorAll(sel); }
 
   function html(strings, ...vals) {
     return strings.reduce((acc, str, i) => acc + str + (vals[i] !== undefined ? vals[i] : ''), '');
@@ -55,6 +56,7 @@
     if (token) {
       $navLinks.innerHTML = html`
         <a href="#/" class="nav-link" data-nav>Apps</a>
+        <a href="#/projects" class="nav-link" data-nav>Projects</a>
         <a href="#/deployments" class="nav-link" data-nav>Deployments</a>
         <a href="#/settings" class="nav-link" data-nav>Settings</a>
         <a href="#/login" class="nav-link" onclick="APP.logout()" style="margin-left:auto;color:var(--red)">Logout</a>
@@ -244,13 +246,115 @@
     }
   }
 
+  async function renderProjects() {
+    showLoading();
+    try {
+      if (!(await checkAuth())) { renderLogin(); return; }
+      const projects = await API.listProjects();
+
+      $app.innerHTML = html`
+        <div class="page-header">
+          <h1>Projects</h1>
+          <p>Organize your applications into projects</p>
+        </div>
+        <div class="card">
+          <div class="card-title">New Project</div>
+          <form id="create-project-form" style="display:flex;gap:8px;align-items:flex-end">
+            <div class="form-group" style="flex:1;margin-bottom:0">
+              <label>Project Name</label>
+              <input type="text" id="project-name-input" class="form-input" required placeholder="my-project">
+            </div>
+            <button type="submit" class="btn btn-primary">Create</button>
+          </form>
+        </div>
+        <div class="card">
+          <div class="card-title">All Projects (${projects.length})</div>
+          ${projects.length === 0
+            ? '<div class="empty-state"><p>No projects yet. Create one above.</p></div>'
+            : projects.map(p => html`
+              <a href="#/project/${escape(p.id)}" class="app-card">
+                <div class="app-card-left">
+                  <div>
+                    <div class="app-card-name">${escape(p.name)}</div>
+                    <div class="app-card-repo">${escape(p.description || '')} · ${p.app_count} app(s)</div>
+                  </div>
+                </div>
+                <div class="app-card-right">
+                  <span class="timestamp">${timeAgo(p.created_at)}</span>
+                </div>
+              </a>
+            `).join('')}
+        </div>
+      `;
+
+      $('#create-project-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = $('#project-name-input').value.trim();
+        if (!name) return;
+        try {
+          await API.createProject(name);
+          $('#project-name-input').value = '';
+          renderProjects();
+        } catch (err) {
+          alert('Failed to create project: ' + err.message);
+        }
+      });
+    } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
+      showError(err.message);
+    }
+  }
+
+  async function renderProject(id) {
+    showLoading();
+    try {
+      if (!(await checkAuth())) { renderLogin(); return; }
+      const project = await API.getProject(id);
+      const apps = project.apps || [];
+
+      $app.innerHTML = html`
+        <div class="page-header">
+          <a href="#/projects" class="btn btn-sm" style="margin-bottom:12px;display:inline-flex">&larr; Back</a>
+          <h1>${escape(project.name)}</h1>
+          <p>${escape(project.description || 'No description')}</p>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:24px">
+          <button class="btn btn-danger btn-sm" onclick="APP.deleteProject('${escape(project.id)}')">Delete Project</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Apps (${apps.length})</div>
+          ${apps.length === 0
+            ? '<div class="empty-state"><p>No apps in this project. Assign apps from their detail page.</p></div>'
+            : apps.map(a => html`
+              <a href="#/app/${escape(a.repo_name)}" class="app-card">
+                <div class="app-card-left">
+                  <div>
+                    <div class="app-card-name">${escape(a.repo_name)}</div>
+                    <div class="app-card-repo">${escape(a.repo_url || '')}</div>
+                  </div>
+                </div>
+                <div class="app-card-right">
+                  <span>Port ${a.host_port || '-'}</span>
+                </div>
+              </a>
+            `).join('')}
+        </div>
+      `;
+    } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
+      showError(err.message);
+    }
+  }
+
   async function renderApp(repoName) {
     showLoading();
     try {
       if (!(await checkAuth())) { renderLogin(); return; }
-      const [app, deployments] = await Promise.all([
+      const [app, deployments, envVars, projects] = await Promise.all([
         API.getApp(repoName),
         API.listDeployments(),
+        API.getEnvVars(repoName).catch(() => []),
+        API.listProjects().catch(() => []),
       ]);
 
       const appDeployments = deployments.filter(d => d.repo_name === repoName);
@@ -278,9 +382,56 @@
             <div class="detail-label">Registered</div>
             <div class="detail-value timestamp">${formatTime(app.registered_at)}</div>
           </div>
+          <div class="detail-item">
+            <div class="detail-label">Project</div>
+            <div class="detail-value">
+              <select id="project-select" class="form-input" style="width:auto" onchange="APP.setAppProject('${escape(repoName)}', this.value)">
+                <option value="">No project</option>
+                ${projects.map(p => html`
+                  <option value="${escape(p.id)}" ${app.project_id == p.id ? 'selected' : ''}>${escape(p.name)}</option>
+                `).join('')}
+              </select>
+            </div>
+          </div>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:24px">
           <button class="btn btn-danger btn-sm" onclick="APP.rollback('${escape(repoName)}')">Rollback</button>
+          <button class="btn btn-danger btn-sm" onclick="APP.deleteApp('${escape(repoName)}')">Delete App</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Environment Variables</div>
+          <div id="env-vars-area">
+            ${envVars.length === 0
+              ? '<div class="empty-state"><p>No environment variables set.</p></div>'
+              : html`
+                <div class="table-wrap">
+                  <table>
+                    <thead><tr><th>Key</th><th>Value</th><th>Updated</th><th></th></tr></thead>
+                    <tbody>
+                      ${envVars.map(v => html`
+                        <tr>
+                          <td style="font-family:monospace">${escape(v.key)}</td>
+                          <td style="font-family:monospace">${escape(v.value)}</td>
+                          <td class="timestamp">${timeAgo(v.updated_at)}</td>
+                          <td><button class="btn btn-danger btn-sm" onclick="APP.deleteEnvVar('${escape(repoName)}','${escape(v.key)}')">Delete</button></td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `}
+            <form id="env-var-form" style="display:flex;gap:8px;margin-top:12px;align-items:flex-end">
+              <div class="form-group" style="flex:1;margin-bottom:0">
+                <label>Key</label>
+                <input type="text" class="form-input" id="env-key" placeholder="MY_VAR" style="font-family:monospace">
+              </div>
+              <div class="form-group" style="flex:2;margin-bottom:0">
+                <label>Value</label>
+                <input type="text" class="form-input" id="env-value" placeholder="value" style="font-family:monospace">
+              </div>
+              <button type="submit" class="btn btn-primary">Add</button>
+            </form>
+          </div>
         </div>
         <div class="card">
           <div class="card-title">Deployments (${appDeployments.length})</div>
@@ -312,6 +463,21 @@
             `}
         </div>
       `;
+
+      $('#env-var-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const key = $('#env-key').value.trim();
+        const value = $('#env-value').value.trim();
+        if (!key) return;
+        try {
+          await API.setEnvVar(repoName, key, value);
+          $('#env-key').value = '';
+          $('#env-value').value = '';
+          renderApp(repoName);
+        } catch (err) {
+          alert('Failed to set env var: ' + err.message);
+        }
+      });
     } catch (err) {
       if (err.message.includes('Authentication')) { renderLogin(); return; }
       showError(err.message);
@@ -423,8 +589,7 @@
           <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px">
             Select a repository to import into Sentinel.
           </p>
-          <button class="btn" onclick="APP.loadRepos()">Load Repositories</button>
-          <div id="repo-list" style="margin-top:16px"></div>
+          <a href="#/import" class="btn">Browse Repositories</a>
         </div>
       `;
     } catch (err) {
@@ -437,7 +602,10 @@
     showLoading();
     try {
       if (!(await checkAuth())) { renderLogin(); return; }
-      const repos = await API.listGitHubRepos();
+      const [repos, projects] = await Promise.all([
+        API.listGitHubRepos(),
+        API.listProjects().catch(() => []),
+      ]);
 
       const unregistered = repos.filter(r => !r.registered);
       const registered = repos.filter(r => r.registered);
@@ -453,11 +621,18 @@
           ${unregistered.length === 0
             ? '<div class="empty-state"><p>All repos are already registered.</p></div>'
             : unregistered.map(r => html`
-              <div class="app-card">
+              <div class="app-card" style="cursor:default">
                 <div class="app-card-left">
                   <div>
                     <div class="app-card-name">${escape(r.name)}</div>
                     <div class="app-card-repo">${escape(r.language || '')} ${r.private ? html`<span class="badge badge-warning">Private</span>` : ''}</div>
+                    <div style="font-size:13px;color:var(--text-secondary);margin-top:4px">
+                      Project:
+                      <select class="import-project-select" data-name="${escape(r.name)}" data-url="${escape(r.url)}" style="font-size:13px;padding:2px 4px">
+                        <option value="">None</option>
+                        ${projects.map(p => html`<option value="${escape(p.id)}">${escape(p.name)}</option>`).join('')}
+                      </select>
+                    </div>
                   </div>
                 </div>
                 <div class="app-card-right">
@@ -494,6 +669,8 @@
     const hash = location.hash.slice(1) || '/';
     if (hash === '/login') { renderLogin(); }
     else if (hash === '/register') { renderRegister(); }
+    else if (hash === '/projects') { renderProjects(); }
+    else if (hash.startsWith('/project/')) { renderProject(hash.slice(9)); }
     else if (hash === '/settings') { renderSettings(); }
     else if (hash === '/import') { renderImport(); }
     else if (hash.startsWith('/app/')) { renderApp(decodeURIComponent(hash.slice(5))); }
@@ -521,6 +698,42 @@
         router();
       } catch (err) {
         alert(`Rollback failed: ${err.message}`);
+      }
+    },
+    async deleteApp(repoName) {
+      if (!confirm(`Permanently delete ${repoName} and all its deployments?`)) return;
+      if (!confirm(`Are you sure? This cannot be undone.`)) return;
+      try {
+        await API.deleteApp(repoName);
+        alert(`App "${repoName}" deleted.`);
+        router();
+      } catch (err) {
+        alert(`Delete failed: ${err.message}`);
+      }
+    },
+    async deleteProject(id) {
+      if (!confirm('Delete this project? Apps will not be deleted.')) return;
+      try {
+        await API.deleteProject(id);
+        router();
+      } catch (err) {
+        alert('Delete failed: ' + err.message);
+      }
+    },
+    async setAppProject(repoName, projectId) {
+      try {
+        await API.setAppProject(repoName, projectId || null);
+      } catch (err) {
+        alert('Failed to update project: ' + err.message);
+      }
+    },
+    async deleteEnvVar(repoName, key) {
+      if (!confirm(`Delete env var ${key}?`)) return;
+      try {
+        await API.deleteEnvVar(repoName, key);
+        renderApp(repoName);
+      } catch (err) {
+        alert('Failed to delete env var: ' + err.message);
       }
     },
     async loadRepos() {
@@ -552,9 +765,11 @@
       }
     },
     async importRepo(name, url) {
+      const projSelect = document.querySelector(`.import-project-select[data-name="${escape(name)}"]`);
+      const projectId = projSelect ? projSelect.value : '';
       if (!confirm(`Import ${name} into Sentinel?`)) return;
       try {
-        const result = await API.importApp(name, url);
+        const result = await API.importApp(name, url, projectId || undefined);
         alert(`App "${name}" imported successfully!`);
         router();
       } catch (err) {

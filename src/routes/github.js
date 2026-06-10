@@ -99,10 +99,21 @@ router.post('/apps/import', authMiddleware, apiRateLimiter, async (req, res) => 
       }
     }
 
+    const { project_id } = req.body;
     appConfigService.createAppConfig(repo_name, repo_url);
+
+    const db = require('../db').getDb();
+    if (project_id) {
+      const proj = db.prepare('SELECT id FROM projects WHERE id = ?').get(project_id);
+      if (proj) {
+        db.prepare('UPDATE app_configs SET project_id = ? WHERE repo_name = ?').run(project_id, repo_name);
+      }
+    }
 
     logger.log(repo_name, 'INFO', '-', 'App imported from GitHub');
     const appConfig = appConfigService.getAppConfig(repo_name);
+    const row = db.prepare('SELECT project_id FROM app_configs WHERE repo_name = ?').get(repo_name);
+    appConfig.project_id = row ? row.project_id : null;
     res.status(201).json({ message: 'App imported', app: appConfig });
   } catch (err) {
     res.status(500).json({ message: `Import failed: ${err.message}` });

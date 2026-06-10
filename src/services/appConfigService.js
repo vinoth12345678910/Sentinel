@@ -58,4 +58,13 @@ function getAllAppConfigs() {
   }
 }
 
-module.exports = { getAppConfig, createAppConfig: createAppConfigRecord, updateAppConfig, getAllAppConfigs };
+function deleteAppConfigFile(repoName) {
+  const filePath = getFilePath(repoName);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+    return true;
+  }
+  return false;
+}
+
+module.exports = { getAppConfig, createAppConfig: createAppConfigRecord, updateAppConfig, getAllAppConfigs, deleteAppConfigFile };

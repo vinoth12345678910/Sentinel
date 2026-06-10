@@ -4,8 +4,17 @@ const config = require('../config');
 const logger = require('./loggerService');
 const deploymentService = require('./deploymentService');
 
+function getEnvFilePath(repoName) {
+  const candidate = path.join(config.REPOS_BASE_PATH, repoName, '.env.deployment');
+  try {
+    if (require('fs').existsSync(candidate)) return candidate;
+  } catch {}
+  return '';
+}
+
 function trigger(repoName, deploymentId, repoUrl, commitHash, hostPort, containerPort, healthPath) {
   const scriptPath = path.join(config.SCRIPTS_PATH, 'pipeline.sh');
+  const envFile = getEnvFilePath(repoName);
   const logDir = path.join(config.REPOS_BASE_PATH, repoName, 'logs');
   const logFile = path.join(logDir, 'pipeline.log');
 
@@ -17,7 +26,7 @@ function trigger(repoName, deploymentId, repoUrl, commitHash, hostPort, containe
 
   let child;
   try {
-    child = spawn('bash', [scriptPath, repoName, deploymentId, repoUrl, commitHash, hostPort, containerPort, healthPath], {
+    child = spawn('bash', [scriptPath, repoName, deploymentId, repoUrl, commitHash, hostPort, containerPort, healthPath, envFile], {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env,

@@ -9,6 +9,7 @@ COMMIT_HASH=$4
 HOST_PORT=$5
 CONTAINER_PORT=$6
 HEALTH_PATH=$7
+ENV_FILE=$8
 
 HEALTH_URL="http://localhost:$HOST_PORT$HEALTH_PATH"
 
@@ -80,7 +81,7 @@ else
     }
 
     log_info "Stage 3/5: Deploying container"
-    ./deploy.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HOST_PORT" "$CONTAINER_PORT" "$HEALTH_PATH"
+    ./deploy.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HOST_PORT" "$CONTAINER_PORT" "$HEALTH_PATH" "$ENV_FILE"
     DEPLOY_EXIT=$?
     if [ "$DEPLOY_EXIT" -ne 0 ]; then
         log_error "Deploy failed"
