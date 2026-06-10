@@ -13,6 +13,7 @@ const validStates = [
   'FAILED_AT_DEPLOY',
   'FAILED_AT_VERIFY',
   'ROLLBACK_STARTED',
+  'ROLLING_BACK',
   'ROLLED_BACK',
 ];
 

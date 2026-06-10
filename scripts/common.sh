@@ -22,11 +22,16 @@ validate_args() {
 
 update_state() {
   state="$1"
+  failure_reason="$2"
   if [ -n "$BACKEND_URL" ] && [ -n "$SENTINEL_API_KEY" ] && [ -n "$DEPLOYMENT_ID" ]; then
+    json_data="{\"state\":\"$state\"}"
+    if [ -n "$failure_reason" ]; then
+      json_data="{\"state\":\"$state\",\"failure_reason\":\"$failure_reason\"}"
+    fi
     http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$BACKEND_URL/deployments/$DEPLOYMENT_ID/state" \
       -H "Content-Type: application/json" \
       -H "x-api-key: $SENTINEL_API_KEY" \
-      -d "{\"state\":\"$state\"}")
+      -d "$json_data")
     if [ "$http_code" != "200" ]; then
       log_warn "update_state ($state) returned HTTP $http_code"
     fi

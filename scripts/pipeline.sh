@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 . ./common.sh
 
 REPO_NAME=$1
@@ -13,7 +14,7 @@ HEALTH_URL="http://localhost:$HOST_PORT$HEALTH_PATH"
 
 validate_args "REPO_NAME" "$REPO_NAME" "DEPLOYMENT_ID" "$DEPLOYMENT_ID" "REPO_URL" "$REPO_URL" "COMMIT_HASH" "$COMMIT_HASH" "HOST_PORT" "$HOST_PORT" "CONTAINER_PORT" "$CONTAINER_PORT" "HEALTH_PATH" "$HEALTH_PATH"
 
-log_info "Pipeline started for $REPO_NAME"
+log_info "Pipeline started for $REPO_NAME (deployment: $DEPLOYMENT_ID)"
 update_state "STARTED"
 
 LOCK_FILE="$REPOS_DIR/$REPO_NAME/.deploy.lock"
@@ -34,13 +35,13 @@ if [ -f "$LOCK_FILE" ]; then
 
     AGE=$((CURRENT_TIME - LOCK_TIME))
 
-    # If the locking PID is alive and lock is fresh, block
     if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null && [ "$AGE" -lt 1800 ]; then
-        log_error "Deployment already running for $REPO_NAME"
+        log_error "Deployment already running for $REPO_NAME (lock held by PID $LOCK_PID)"
+        update_state "FAILED"
         exit 1
     fi
 
-    log_warn "Removing stale deployment lock"
+    log_warn "Removing stale deployment lock (age: ${AGE}s)"
     rm -f "$LOCK_FILE"
 fi
 
@@ -50,26 +51,51 @@ fi
     echo "$DEPLOYMENT_ID"
 } > "$LOCK_FILE"
 
-./clone_pull.sh "$REPO_NAME" "$REPO_URL" "$COMMIT_HASH" "$DEPLOYMENT_ID" || exit 1
+log_info "Stage 1/5: Cloning/pulling repository"
+./clone_pull.sh "$REPO_NAME" "$REPO_URL" "$COMMIT_HASH" "$DEPLOYMENT_ID" || {
+    log_error "Clone/pull failed"
+    exit 1
+}
 
-./build.sh "$REPO_NAME" "$DEPLOYMENT_ID" || exit 1
+log_info "Stage 2/5: Building Docker image"
+./build.sh "$REPO_NAME" "$DEPLOYMENT_ID" || {
+    log_error "Build failed"
+    exit 1
+}
 
+log_info "Stage 3/5: Deploying container"
 ./deploy.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HOST_PORT" "$CONTAINER_PORT" "$HEALTH_PATH"
-if [ $? -ne 0 ]; then
+DEPLOY_EXIT=$?
+if [ "$DEPLOY_EXIT" -ne 0 ]; then
+    log_error "Deploy failed"
     update_state "FAILED_AT_DEPLOY"
-    ./rollback.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL" "$HOST_PORT" "$CONTAINER_PORT"
+    ./rollback.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL" "$HOST_PORT" "$CONTAINER_PORT" || {
+        log_error "Rollback also failed"
+        update_state "FAILED"
+    }
     exit 1
 fi
 
+log_info "Stage 4/5: Verifying deployment health"
 ./verify.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL"
-if [ $? -ne 0 ]; then
+VERIFY_EXIT=$?
+if [ "$VERIFY_EXIT" -ne 0 ]; then
+    log_error "Verification failed — starting rollback"
     update_state "FAILED_AT_VERIFY"
-    ./rollback.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL" "$HOST_PORT" "$CONTAINER_PORT"
+    ./rollback.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL" "$HOST_PORT" "$CONTAINER_PORT" || {
+        log_error "Rollback also failed"
+        update_state "FAILED"
+    }
     exit 1
 fi
+
+log_info "Stage 5/5: Configuring Nginx reverse proxy"
+./nginx-config.sh "$REPO_NAME" "$HOST_PORT" || {
+    log_warn "Nginx config generation failed — deployment still healthy but may not be accessible via domain"
+}
 
 docker system prune -f --filter "until=24h" 2>/dev/null || true
 
-log_info "Pipeline completed successfully"
+log_info "Pipeline completed successfully for $REPO_NAME"
 update_state "SUCCESS"
 exit 0

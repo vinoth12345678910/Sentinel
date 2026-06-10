@@ -1,6 +1,10 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
 const appConfigService = require('../services/appConfigService');
+const deploymentService = require('../services/deploymentService');
+const pipelineService = require('../services/pipelineService');
+const { createDeployment } = require('../models/deployment');
+const logger = require('../services/loggerService');
 const { apiRateLimiter } = require('../middleware/rateLimiter');
 const { validateRepoName } = require('../middleware/validateInput');
 
@@ -68,6 +72,40 @@ router.post('/apps/:repoName/config', authMiddleware, apiRateLimiter, (req, res)
   } catch (err) {
     res.status(500).json({ message: 'Failed to update app config' });
   }
+});
+
+router.post('/apps/:repoName/rollback', authMiddleware, apiRateLimiter, (req, res) => {
+  const { repoName } = req.params;
+
+  if (!validateRepoName(repoName)) {
+    return res.status(400).json({ message: 'Invalid repository name' });
+  }
+
+  const appCfg = appConfigService.getAppConfig(repoName);
+  if (!appCfg) {
+    return res.status(404).json({ message: 'App not found' });
+  }
+
+  const timestamp = Date.now().toString();
+  const deployment = createDeployment({
+    repo_name: repoName,
+    branch: 'rollback',
+    commit_hash: 'rollback',
+    pusher: 'api',
+    timestamp,
+  });
+
+  deployment.state = 'ROLLING_BACK';
+  deploymentService.create(deployment);
+
+  const hostPort = appCfg.host_port || 3000;
+  const containerPort = appCfg.container_port || 3000;
+  const healthPath = appCfg.health_path || '/health';
+
+  pipelineService.triggerRollback(repoName, deployment.deployment_id, hostPort, containerPort, healthPath);
+
+  logger.log(repoName, 'INFO', deployment.deployment_id, 'Rollback initiated via API');
+  res.status(200).json({ deployment_id: deployment.deployment_id, message: 'Rollback initiated' });
 });
 
 module.exports = router;

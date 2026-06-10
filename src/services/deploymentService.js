@@ -29,7 +29,7 @@ function read(deploymentId) {
   return null;
 }
 
-function updateState(deploymentId, newState) {
+function updateState(deploymentId, newState, failureReason) {
   const reposDir = config.REPOS_BASE_PATH;
   if (!fs.existsSync(reposDir)) return null;
   const repos = fs.readdirSync(reposDir);
@@ -39,8 +39,11 @@ function updateState(deploymentId, newState) {
       const deployment = JSON.parse(fs.readFileSync(deployPath, 'utf-8'));
       deployment.state = newState;
       deployment.updated_at = new Date().toISOString();
+      if (failureReason !== undefined && failureReason !== null) {
+        deployment.failure_reason = failureReason;
+      }
       fs.writeFileSync(deployPath, JSON.stringify(deployment, null, 2));
-      logger.log(deployment.repo_name, 'INFO', deploymentId, `State updated to ${newState}`);
+      logger.log(deployment.repo_name, 'INFO', deploymentId, `State updated to ${newState}${failureReason ? `: ${failureReason}` : ''}`);
       return deployment;
     }
   }

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 . ./common.sh
 
 REPO_NAME=$1
@@ -29,29 +30,28 @@ fi
 IMAGE_TAG=$(cat "$BUILD_FILE")
 log_info "Current image tag: $IMAGE_TAG"
 
+# Save previous image info before deploying new one
 if [ -f "$ACTIVE_CONTAINER_FILE" ]; then
     OLD_CONTAINER=$(cat "$ACTIVE_CONTAINER_FILE")
-    log_info "Old container found: $OLD_CONTAINER"
-
     if docker inspect "$OLD_CONTAINER" > /dev/null 2>&1; then
-        OLD_IMAGE=$(cat "$ACTIVE_IMAGE_FILE")
-        echo "$OLD_IMAGE" > "$PREVIOUS_IMAGE_FILE"
-        docker stop "$OLD_CONTAINER" || { update_state "FAILED_AT_DEPLOY"; exit 1; }
-        docker rm "$OLD_CONTAINER" || { update_state "FAILED_AT_DEPLOY"; exit 1; }
+        if [ -f "$ACTIVE_IMAGE_FILE" ]; then
+            OLD_IMAGE=$(cat "$ACTIVE_IMAGE_FILE")
+            echo "$OLD_IMAGE" > "$PREVIOUS_IMAGE_FILE"
+            log_info "Saved previous image: $OLD_IMAGE"
+        fi
+        docker rm -f "$OLD_CONTAINER" || { update_state "FAILED_AT_DEPLOY"; exit 1; }
+        log_info "Removed old container: $OLD_CONTAINER"
     else
         log_warn "Old container '$OLD_CONTAINER' not found — skipping stop/rm"
     fi
-
-    docker run -d --restart unless-stopped -p "$HOST_PORT:$CONTAINER_PORT" --name "$REPO_NAME" "$IMAGE_TAG" || { update_state "FAILED_AT_DEPLOY"; exit 1; }
-    echo "$REPO_NAME" > "$ACTIVE_CONTAINER_FILE"
-    echo "$IMAGE_TAG" > "$ACTIVE_IMAGE_FILE"
 else
     log_info "No active container found. First deployment."
-    docker run -d --restart unless-stopped -p "$HOST_PORT:$CONTAINER_PORT" --name "$REPO_NAME" "$IMAGE_TAG" || { update_state "FAILED_AT_DEPLOY"; exit 1; }
-    echo "$REPO_NAME" > "$ACTIVE_CONTAINER_FILE"
-    echo "$IMAGE_TAG" > "$ACTIVE_IMAGE_FILE"
 fi
 
+docker run -d --restart unless-stopped -p "$HOST_PORT:$CONTAINER_PORT" --name "$REPO_NAME" "$IMAGE_TAG" || { update_state "FAILED_AT_DEPLOY"; exit 1; }
+
+echo "$REPO_NAME" > "$ACTIVE_CONTAINER_FILE"
+echo "$IMAGE_TAG" > "$ACTIVE_IMAGE_FILE"
 echo "$HOST_PORT" > "$HOST_PORT_FILE"
 echo "$CONTAINER_PORT" > "$CONTAINER_PORT_FILE"
 echo "$HEALTH_PATH" > "$REPO_DIR/health_path.txt"

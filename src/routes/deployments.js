@@ -27,7 +27,7 @@ router.get('/deployments', authMiddleware, apiRateLimiter, (req, res) => {
 
 router.patch('/deployments/:deploymentId/state', authMiddleware, apiRateLimiter, (req, res) => {
   const { deploymentId } = req.params;
-  const { state } = req.body;
+  const { state, failure_reason } = req.body;
 
   if (!validateDeploymentId(deploymentId)) {
     return res.status(400).json({ message: 'Invalid deployment ID' });
@@ -35,11 +35,11 @@ router.patch('/deployments/:deploymentId/state', authMiddleware, apiRateLimiter,
 
   if (!state || !isValidState(state)) {
     return res.status(400).json({
-      message: `Invalid state`,
+      message: 'Invalid state',
     });
   }
 
-  const deployment = deploymentService.updateState(deploymentId, state);
+  const deployment = deploymentService.updateState(deploymentId, state, failure_reason || null);
   if (!deployment) {
     return res.status(404).json({ message: 'Deployment not found' });
   }
