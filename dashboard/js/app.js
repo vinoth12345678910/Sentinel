@@ -686,7 +686,7 @@
           ${teams.length === 0
             ? '<div class="empty-state"><p>No teams yet.</p></div>'
             : teams.map(t => html`
-              <div class="app-card" style="cursor:default">
+              <a href="#/team/${escape(t.id)}" class="app-card">
                 <div class="app-card-left">
                   <div>
                     <div class="app-card-name">${escape(t.name)}</div>
@@ -694,9 +694,9 @@
                   </div>
                 </div>
                 <div class="app-card-right">
-                  <button class="btn btn-danger btn-sm" onclick="APP.deleteTeam('${escape(t.id)}','${escape(t.name)}')">Delete</button>
+                  <span class="timestamp">${timeAgo(t.created_at)}</span>
                 </div>
-              </div>
+              </a>
             `).join('')}
         </div>
       `;
@@ -944,6 +944,99 @@
     }
   }
 
+  async function renderTeamDetail(id) {
+    showLoading();
+    try {
+      if (!(await checkAuth())) { renderLogin(); return; }
+      const team = await API.getTeam(id);
+
+      $app.innerHTML = html`
+        <div class="page-header">
+          <a href="#/teams" class="btn btn-sm" style="margin-bottom:12px;display:inline-flex">&larr; Back</a>
+          <h1>${escape(team.name)}</h1>
+          <p>${escape(team.description || '')} · ${team.member_count} members · ${team.project_count || 0} projects</p>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:24px">
+          <button class="btn btn-danger btn-sm" onclick="APP.deleteTeam('${escape(team.id)}','${escape(team.name)}')">Delete Team</button>
+        </div>
+        <div class="card">
+          <div class="card-title">Members (${team.member_count})</div>
+          ${(!team.members || team.members.length === 0)
+            ? '<div class="empty-state"><p>No members yet.</p></div>'
+            : html`
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Username</th><th>Email</th><th>Role</th><th></th></tr></thead>
+                  <tbody>
+                    ${team.members.map(m => html`
+                      <tr>
+                        <td>${escape(m.username || m.user_id)}</td>
+                        <td>${escape(m.email || '-')}</td>
+                        <td><span class="badge ${m.role === 'admin' ? 'badge-warning' : 'badge-info'}">${escape(m.role)}</span></td>
+                        <td><button class="btn btn-danger btn-sm" onclick="APP.removeTeamMember('${escape(team.id)}','${escape(m.user_id)}','${escape(m.username || m.user_id)}')">Remove</button></td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+        </div>
+        <div class="card">
+          <div class="card-title">Add Member</div>
+          <form id="add-member-form" style="display:flex;gap:8px;align-items:flex-end">
+            <div class="form-group" style="flex:1;margin-bottom:0">
+              <label>Username</label>
+              <input type="text" id="member-username" class="form-input" required placeholder="username">
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label>Role</label>
+              <select id="member-role" class="form-input" style="width:auto">
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Add</button>
+          </form>
+        </div>
+        ${team.projects && team.projects.length > 0 ? html`
+          <div class="card">
+            <div class="card-title">Projects (${team.projects.length})</div>
+            ${team.projects.map(p => html`
+              <a href="#/project/${escape(p.id)}" class="app-card">
+                <div class="app-card-left">
+                  <div>
+                    <div class="app-card-name">${escape(p.name)}</div>
+                    <div class="app-card-repo">${escape(p.description || '')}</div>
+                  </div>
+                </div>
+              </a>
+            `).join('')}
+          </div>
+        ` : ''}
+      `;
+
+      const form = $('#add-member-form');
+      if (form) {
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const username = $('#member-username').value.trim();
+          const role = $('#member-role').value;
+          if (!username) return;
+          try {
+            await API.addTeamMember(id, username, role);
+            $('#member-username').value = '';
+            renderTeamDetail(id);
+          } catch (err) {
+            alert('Failed to add member: ' + err.message);
+          }
+        });
+      }
+    } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
+      showError(err.message);
+    }
+  }
+
   async function router() {
     const hash = location.hash.slice(1) || '/';
     if (hash === '/login') { renderLogin(); }
@@ -952,6 +1045,7 @@
     else if (hash.startsWith('/project/')) { renderProject(hash.slice(9)); }
     else if (hash === '/monitoring') { renderMonitoring(); }
     else if (hash === '/teams') { renderTeams(); }
+    else if (hash.startsWith('/team/')) { renderTeamDetail(hash.slice(6)); }
     else if (hash === '/audit-log') { renderAuditLog(); }
     else if (hash === '/settings') { renderSettings(); }
     else if (hash === '/import') { renderImport(); }
@@ -1077,11 +1171,20 @@
         alert(`Rollback failed: ${err.message}`);
       }
     },
+    async removeTeamMember(teamId, userId, username) {
+      if (!confirm(`Remove ${username} from the team?`)) return;
+      try {
+        await API.removeTeamMember(teamId, userId);
+        renderTeamDetail(teamId);
+      } catch (err) {
+        alert('Failed to remove member: ' + err.message);
+      }
+    },
     async deleteTeam(id, name) {
       if (!confirm(`Delete team "${name}"?`)) return;
       try {
         await API.deleteTeam(id);
-        renderTeams();
+        router();
       } catch (err) {
         alert('Failed: ' + err.message);
       }

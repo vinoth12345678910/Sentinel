@@ -95,8 +95,11 @@ const API = (() => {
     deleteDomain: (name, id) => request('DELETE', `/apps/${name}/custom-domains/${id}`),
     getMonitoringHealth: () => request('GET', '/monitoring/health'),
     listTeams: () => request('GET', '/teams'),
+    getTeam: (id) => request('GET', `/teams/${id}`),
     createTeam: (name, description) => request('POST', '/teams', { name, description }),
     deleteTeam: (id) => request('DELETE', `/teams/${id}`),
+    addTeamMember: (id, username, role) => request('POST', `/teams/${id}/members`, { username, role }),
+    removeTeamMember: (id, userId) => request('DELETE', `/teams/${id}/members/${userId}`),
     getAuditLog: (limit) => request('GET', `/audit-log?limit=${limit || 100}`),
     getAuditLogStats: () => request('GET', '/audit-log/stats'),
   };

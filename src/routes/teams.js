@@ -103,9 +103,15 @@ router.post('/teams/:id/members', authMiddleware, requireRole('admin'), apiRateL
     const db = getDb();
     const team = db.prepare('SELECT * FROM teams WHERE id = ?').get(req.params.id);
     if (!team) return res.status(404).json({ message: 'Team not found' });
-    const { user_id, role } = req.body;
-    if (!user_id) return res.status(400).json({ message: 'user_id is required' });
-    const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(user_id);
+    let { user_id, username, role } = req.body;
+    if (!user_id && !username) return res.status(400).json({ message: 'user_id or username is required' });
+    let user;
+    if (user_id) {
+      user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(user_id);
+    } else {
+      user = db.prepare('SELECT id, username FROM users WHERE username = ?').get(username);
+      user_id = user ? user.id : null;
+    }
     if (!user) return res.status(404).json({ message: 'User not found' });
     db.prepare('INSERT OR IGNORE INTO team_members (team_id, user_id, role) VALUES (?, ?, ?)').run(req.params.id, user_id, role || 'member');
     auditLogService.log(req.user, 'team.add_member', 'team', team.id, { user_id, username: user.username });
