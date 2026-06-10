@@ -7,7 +7,7 @@ function createAppConfig(repoName, repoUrl) {
     host_port: null,
     domain: null,
     ssl: false,
-    custom_domain: null,
+    custom_domains: {},
     previews: {},
     registered_at: null,
     updated_at: null,

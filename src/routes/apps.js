@@ -193,6 +193,67 @@ router.delete('/apps/:repoName/previews/:branch', authMiddleware, apiRateLimiter
   }
 });
 
+// POST /apps/:repoName/custom-domains/:domain — add a custom domain
+router.post('/apps/:repoName/custom-domains/:domain', authMiddleware, apiRateLimiter, (req, res) => {
+  const { repoName, domain } = req.params;
+
+  if (!validateRepoName(repoName)) {
+    return res.status(400).json({ message: 'Invalid repository name' });
+  }
+
+  // Basic domain validation
+  if (!domain || !/^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(domain)) {
+    return res.status(400).json({ message: 'Invalid domain format' });
+  }
+
+  const app = appConfigService.getAppConfig(repoName);
+  if (!app) return res.status(404).json({ message: 'App not found' });
+
+  const customDomains = app.custom_domains || {};
+  if (customDomains[domain]) {
+    return res.status(409).json({ message: 'Domain already added' });
+  }
+
+  customDomains[domain] = {
+    ssl: false,
+    verified: false,
+    created_at: new Date().toISOString(),
+  };
+
+  try {
+    const updated = appConfigService.updateAppConfig(repoName, { custom_domains: customDomains });
+    res.status(201).json(updated);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to add custom domain' });
+  }
+});
+
+// DELETE /apps/:repoName/custom-domains/:domain — remove a custom domain
+router.delete('/apps/:repoName/custom-domains/:domain', authMiddleware, apiRateLimiter, (req, res) => {
+  const { repoName, domain } = req.params;
+
+  if (!validateRepoName(repoName)) {
+    return res.status(400).json({ message: 'Invalid repository name' });
+  }
+
+  const app = appConfigService.getAppConfig(repoName);
+  if (!app) return res.status(404).json({ message: 'App not found' });
+
+  const customDomains = app.custom_domains || {};
+  if (!customDomains[domain]) {
+    return res.status(404).json({ message: 'Custom domain not found' });
+  }
+
+  delete customDomains[domain];
+
+  try {
+    const updated = appConfigService.updateAppConfig(repoName, { custom_domains: customDomains });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to remove custom domain' });
+  }
+});
+
 router.get('/apps/:repoName/db-check', authMiddleware, apiRateLimiter, (req, res) => {
   const db = require('../db').getDb();
   const row = db.prepare('SELECT * FROM app_configs WHERE repo_name = ?').get(req.params.repoName);

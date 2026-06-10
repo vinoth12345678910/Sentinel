@@ -23,12 +23,24 @@ CONFIG_PATH="$NGINX_AVAILABLE/$CONFIG_FILE"
 
 mkdir -p "$NGINX_AVAILABLE" "$NGINX_ENABLED"
 
+# Build server_name with all domains
+SERVER_NAME="$DOMAIN"
+if [ -n "${CUSTOM_DOMAINS:-}" ]; then
+    IFS=',' read -ra DOMAINS <<< "$CUSTOM_DOMAINS"
+    for CD in "${DOMAINS[@]}"; do
+        CD_TRIMMED=$(echo "$CD" | xargs)
+        if [ -n "$CD_TRIMMED" ]; then
+            SERVER_NAME="$SERVER_NAME $CD_TRIMMED"
+        fi
+    done
+fi
+
 cat > "$CONFIG_PATH" <<CFGEOF
 # Sentinel - $REPO_NAME
 # Generated on $(date)
 server {
     listen 80;
-    server_name $DOMAIN;
+    server_name $SERVER_NAME;
 
     client_max_body_size 50M;
 
@@ -60,9 +72,17 @@ log_info "Nginx config live: http://$DOMAIN → localhost:$HOST_PORT"
 # Provision SSL if possible (non-blocking — app works via HTTP even if SSL fails)
 SSL_OK=0
 if [ -f "./provision-ssl.sh" ]; then
-    if ./provision-ssl.sh "$DOMAIN" 2>&1; then
+    CUSTOM_DOMAINS_LIST=""
+    if [ -n "${CUSTOM_DOMAINS:-}" ]; then
+        IFS=',' read -ra DOMAINS <<< "$CUSTOM_DOMAINS"
+        for CD in "${DOMAINS[@]}"; do
+            CUSTOM_DOMAINS_LIST="$CUSTOM_DOMAINS_LIST $(echo "$CD" | xargs)"
+        done
+    fi
+    # shellcheck disable=SC2086
+    if ./provision-ssl.sh "$DOMAIN" $CUSTOM_DOMAINS_LIST 2>&1; then
         SSL_OK=1
-        log_info "SSL provisioned for $DOMAIN"
+        log_info "SSL provisioned for $DOMAIN $CUSTOM_DOMAINS_LIST"
     fi
 fi
 

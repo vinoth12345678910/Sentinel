@@ -128,6 +128,25 @@ else
 fi
 
 log_info "Stage 5/5: Configuring Nginx reverse proxy"
+
+# Fetch custom domains from backend for this app
+CUSTOM_DOMAINS=""
+if [ "$IS_PREVIEW" = false ]; then
+    APP_DATA=$(curl -s -H "x-api-key: $SENTINEL_API_KEY" "$BACKEND_URL/apps/$REPO_NAME" 2>/dev/null || echo "{}")
+    CUSTOM_DOMAINS=$(echo "$APP_DATA" | python3 -c "
+import sys,json
+try:
+    d=json.load(sys.stdin)
+    cds=d.get('custom_domains',{})
+    print(','.join(cds.keys()))
+except: print('')
+" 2>/dev/null || echo "")
+    if [ -n "$CUSTOM_DOMAINS" ]; then
+        log_info "Custom domains: $CUSTOM_DOMAINS"
+        export CUSTOM_DOMAINS
+    fi
+fi
+
 if [ "$IS_PREVIEW" = true ]; then
     BASE_DOMAIN="${BASE_DOMAIN:-vinoth-sntl.uk}"
     PREVIEW_SLUG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//' | tr '[:upper:]' '[:lower:]')
