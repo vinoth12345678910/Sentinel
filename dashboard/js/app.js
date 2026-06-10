@@ -554,13 +554,48 @@
         <div class="page-header">
           <a href="#/deployments" class="btn btn-sm" style="margin-bottom:12px;display:inline-flex">&larr; Back</a>
           <h1>Deployment Logs</h1>
-          <p>${escape(deploymentId)} ${deployment ? stateBadge(deployment.state) : ''}</p>
+          <p>${escape(deploymentId)} ${deployment ? stateBadge(deployment.state) : ''} <span id="live-indicator" style="display:none;margin-left:8px;font-size:12px;color:var(--green)">● LIVE</span></p>
         </div>
-        <div class="log-viewer">${logHtml}</div>
+        <div class="log-viewer" id="log-viewer">${logHtml}</div>
       `;
 
-      const viewer = $('.log-viewer');
+      const viewer = $('#log-viewer');
       if (viewer) viewer.scrollTop = viewer.scrollHeight;
+
+      const token = API.getToken();
+      const eventSource = new EventSource(`/deployments/${encodeURIComponent(deploymentId)}/logs/stream?token=${encodeURIComponent(token)}`);
+
+      const liveIndicator = $('#live-indicator');
+      if (liveIndicator) liveIndicator.style.display = 'inline';
+
+      eventSource.addEventListener('message', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === 'connected') return;
+          if (data.line) {
+            const match = data.line.match(/\[(INFO|WARN|ERROR|WARNING)\]/);
+            const level = match ? match[1] : 'INFO';
+            const lineHtml = html`<div class="log-line log-${escape(level)}">${escape(data.line)}</div>`;
+            const viewerEl = $('#log-viewer');
+            if (viewerEl) {
+              const emptyState = viewerEl.querySelector('.empty-state');
+              if (emptyState) emptyState.remove();
+              viewerEl.insertAdjacentHTML('beforeend', lineHtml);
+              viewerEl.scrollTop = viewerEl.scrollHeight;
+            }
+          }
+        } catch {}
+      });
+
+      eventSource.addEventListener('error', () => {
+        if (liveIndicator) liveIndicator.style.display = 'none';
+        eventSource.close();
+      });
+
+      const origRouter = router;
+      window.addEventListener('hashchange', () => {
+        eventSource.close();
+      }, { once: true });
     } catch (err) {
       if (err.message.includes('Authentication')) { renderLogin(); return; }
       showError(err.message);
