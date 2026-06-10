@@ -92,5 +92,6 @@ const API = (() => {
     listDomains: (name) => request('GET', `/apps/${name}/domains`),
     addDomain: (name, domain, ssl_enabled) => request('POST', `/apps/${name}/domains`, { domain, ssl_enabled }),
     deleteDomain: (name, id) => request('DELETE', `/apps/${name}/domains/${id}`),
+    getMonitoringHealth: () => request('GET', '/monitoring/health'),
   };
 })();

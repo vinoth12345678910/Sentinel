@@ -13,6 +13,7 @@ const projectRoutes = require('./routes/projects');
 const { router: envRoutes } = require('./routes/env');
 const streamRoutes = require('./routes/deploymentStream');
 const domainRoutes = require('./routes/domains');
+const monitoringRoutes = require('./routes/monitoring');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -33,6 +34,7 @@ app.use('/', projectRoutes);
 app.use('/', envRoutes);
 app.use('/', streamRoutes);
 app.use('/', domainRoutes);
+app.use('/', monitoringRoutes);
 
 const dashboardPath = path.join(__dirname, '..', 'dashboard');
 app.use('/dashboard', express.static(dashboardPath));

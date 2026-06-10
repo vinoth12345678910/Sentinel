@@ -29,6 +29,38 @@ function read(deploymentId) {
   return null;
 }
 
+function isFailureState(state) {
+  return state && (state.startsWith('FAILED') || state === 'ROLLED_BACK');
+}
+
+function sendAlertWebhook(deployment) {
+  const webhookUrl = process.env.ALERT_WEBHOOK_URL;
+  if (!webhookUrl) return;
+  try {
+    const https = require('https');
+    const body = JSON.stringify({
+      type: 'deployment_failed',
+      deployment_id: deployment.deployment_id,
+      repo_name: deployment.repo_name,
+      state: deployment.state,
+      failure_reason: deployment.failure_reason || '',
+      timestamp: new Date().toISOString(),
+    });
+    const url = new URL(webhookUrl);
+    const opts = {
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': body.length },
+    };
+    const req = https.request(opts, () => {});
+    req.on('error', () => {});
+    req.write(body);
+    req.end();
+  } catch {}
+}
+
 function updateState(deploymentId, newState, failureReason) {
   const reposDir = config.REPOS_BASE_PATH;
   if (!fs.existsSync(reposDir)) return null;
@@ -44,6 +76,11 @@ function updateState(deploymentId, newState, failureReason) {
       }
       fs.writeFileSync(deployPath, JSON.stringify(deployment, null, 2));
       logger.log(deployment.repo_name, 'INFO', deploymentId, `State updated to ${newState}${failureReason ? `: ${failureReason}` : ''}`);
+
+      if (isFailureState(newState)) {
+        sendAlertWebhook(deployment);
+      }
+
       return deployment;
     }
   }

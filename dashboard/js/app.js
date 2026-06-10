@@ -58,6 +58,7 @@
         <a href="#/" class="nav-link" data-nav>Apps</a>
         <a href="#/projects" class="nav-link" data-nav>Projects</a>
         <a href="#/deployments" class="nav-link" data-nav>Deployments</a>
+        <a href="#/monitoring" class="nav-link" data-nav>Monitoring</a>
         <a href="#/settings" class="nav-link" data-nav>Settings</a>
         <a href="#/login" class="nav-link" onclick="APP.logout()" style="margin-left:auto;color:var(--red)">Logout</a>
       `;
@@ -685,6 +686,86 @@
     }
   }
 
+  async function renderMonitoring() {
+    showLoading();
+    try {
+      if (!(await checkAuth())) { renderLogin(); return; }
+      const data = await API.getMonitoringHealth();
+
+      const mem = data.system.memory;
+      const cpu = data.system.cpu;
+      const disk = data.disk;
+      const containers = data.containers || [];
+
+      $app.innerHTML = html`
+        <div class="page-header">
+          <h1>Monitoring</h1>
+          <p>System health and container metrics</p>
+        </div>
+        <div class="card">
+          <div class="card-title">System</div>
+          <div class="stat-grid">
+            <div class="stat-card">
+              <div class="stat-label">Memory</div>
+              <div class="stat-value" style="font-size:20px">${mem.usage_percent}%</div>
+              <div style="font-size:12px;color:var(--text-secondary)">${Math.round(mem.used / 1024 / 1024)}MB / ${Math.round(mem.total / 1024 / 1024)}MB</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">CPU</div>
+              <div class="stat-value" style="font-size:20px">${cpu.usage_percent}%</div>
+              <div style="font-size:12px;color:var(--text-secondary)">Load: ${data.system.load.join(', ')}</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Disk</div>
+              <div class="stat-value" style="font-size:20px;color:${disk.use_percent > 80 ? 'var(--red)' : 'var(--green)'}">${disk.use_percent}%</div>
+              <div style="font-size:12px;color:var(--text-secondary)">${Math.round(disk.used_kb / 1024 / 1024)}GB / ${Math.round(disk.total_kb / 1024 / 1024)}GB</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Uptime</div>
+              <div class="stat-value" style="font-size:20px">${Math.floor(data.system.uptime / 86400)}d ${Math.floor((data.system.uptime % 86400) / 3600)}h</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Deployments</div>
+              <div class="stat-value" style="font-size:20px">${data.deployments.total}</div>
+              <div style="font-size:12px;color:var(--text-secondary)">${data.deployments.success} ok · ${data.deployments.failed} failed · ${data.deployments.running} running</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Apps</div>
+              <div class="stat-value" style="font-size:20px">${data.apps.total}</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Containers (${containers.length})</div>
+          ${containers.length === 0
+            ? '<div class="empty-state"><p>No containers running or Docker not available.</p></div>'
+            : html`
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Name</th><th>CPU</th><th>Memory</th></tr></thead>
+                  <tbody>
+                    ${containers.map(c => html`
+                      <tr>
+                        <td style="font-family:monospace">${escape(c.name)}</td>
+                        <td>${c.cpu_percent}%</td>
+                        <td>${escape(c.mem_usage)} (${c.mem_percent}%)</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `}
+        </div>
+        <div style="text-align:center;margin-top:24px;font-size:13px;color:var(--text-secondary)">
+          <a href="/metrics" target="_blank" style="color:var(--accent)">Prometheus Metrics</a>
+        </div>
+      `;
+    } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
+      showError(err.message);
+    }
+  }
+
   async function renderImport() {
     showLoading();
     try {
@@ -758,6 +839,7 @@
     else if (hash === '/register') { renderRegister(); }
     else if (hash === '/projects') { renderProjects(); }
     else if (hash.startsWith('/project/')) { renderProject(hash.slice(9)); }
+    else if (hash === '/monitoring') { renderMonitoring(); }
     else if (hash === '/settings') { renderSettings(); }
     else if (hash === '/import') { renderImport(); }
     else if (hash.startsWith('/app/')) { renderApp(decodeURIComponent(hash.slice(5))); }
