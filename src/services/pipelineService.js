@@ -12,7 +12,7 @@ function getEnvFilePath(repoName) {
   return '';
 }
 
-function trigger(repoName, deploymentId, repoUrl, commitHash, hostPort, containerPort, healthPath) {
+function trigger(repoName, deploymentId, repoUrl, commitHash, hostPort, containerPort, healthPath, branch) {
   const scriptPath = path.join(config.SCRIPTS_PATH, 'pipeline.sh');
   const envFile = getEnvFilePath(repoName);
   const logDir = path.join(config.REPOS_BASE_PATH, repoName, 'logs');
@@ -22,11 +22,12 @@ function trigger(repoName, deploymentId, repoUrl, commitHash, hostPort, containe
     BACKEND_URL: config.BACKEND_URL,
     SENTINEL_API_KEY: config.SENTINEL_API_KEY,
     REPOS_DIR: config.REPOS_BASE_PATH,
+    BASE_DOMAIN: config.BASE_DOMAIN,
   });
 
   let child;
   try {
-    child = spawn('bash', [scriptPath, repoName, deploymentId, repoUrl, commitHash, hostPort, containerPort, healthPath, envFile], {
+    child = spawn('bash', [scriptPath, repoName, deploymentId, repoUrl, commitHash, hostPort, containerPort, healthPath, envFile, branch || ''], {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
       env,

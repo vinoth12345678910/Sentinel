@@ -11,6 +11,35 @@ const { validateRepoName } = require('../middleware/validateInput');
 
 const router = express.Router();
 
+function sanitizeBranch(branch) {
+  return branch
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9-]/g, '-')
+    .replace(/--+/g, '-')
+    .replace(/^-/, '')
+    .replace(/-$/, '');
+}
+
+function findFreePort(repoName, excludePort) {
+  const allConfigs = appConfigService.getAllAppConfigs();
+  const usedPorts = allConfigs
+    .flatMap(c => {
+      const ports = [];
+      if (c.repo_name !== repoName && c.host_port) ports.push(c.host_port);
+      if (c.previews) {
+        Object.values(c.previews).forEach(p => {
+          if (p.host_port) ports.push(p.host_port);
+        });
+      }
+      return ports;
+    });
+  let port = excludePort || 3000;
+  while (usedPorts.includes(port)) {
+    port++;
+  }
+  return port;
+}
+
 router.post('/webhook', webhookRateLimiter, express.raw({ type: 'application/json', limit: '1mb' }), (req, res) => {
   const rawBody = req.body;
   if (!rawBody || !Buffer.isBuffer(rawBody) || rawBody.length === 0) {
@@ -55,9 +84,31 @@ router.post('/webhook', webhookRateLimiter, express.raw({ type: 'application/jso
   const ref = payload.ref || '';
   const branch = ref.replace('refs/heads/', '');
 
-  if (branch !== 'main') {
-    logger.log(repoName, 'INFO', '-', `Non-main branch ignored: ${branch}`);
-    return res.status(200).json({ message: 'Ignored non-main branch' });
+  if (!branch) {
+    logger.log(repoName, 'INFO', '-', 'Ignored non-branch push');
+    return res.status(200).json({ message: 'Ignored non-branch push' });
+  }
+
+  // Handle branch deletion — clean up preview
+  if (payload.deleted) {
+    logger.log(repoName, 'INFO', '-', `Branch deleted: ${branch}`);
+    const app = appConfigService.getAppConfig(repoName);
+    if (app && app.previews && app.previews[branch]) {
+      const prev = app.previews[branch];
+      logger.log(repoName, 'INFO', '-', `Cleaning up preview for ${branch} (port ${prev.host_port})`);
+      // Remove nginx config
+      const nginxFile = `sentinel-${prev.domain.replace(/[^a-zA-Z0-9-]/g, '-')}.conf`;
+      require('child_process').exec(`rm -f /etc/nginx/sites-available/${nginxFile} /etc/nginx/sites-enabled/${nginxFile}`);
+      require('child_process').exec('nginx -s reload 2>/dev/null || systemctl reload nginx 2>/dev/null || true');
+      // Stop and remove Docker container
+      require('child_process').exec(`docker stop ${prev.deployment_id} 2>/dev/null; docker rm ${prev.deployment_id} 2>/dev/null || true`);
+      // Remove preview from app config
+      const previews = app.previews || {};
+      delete previews[branch];
+      appConfigService.updateAppConfig(repoName, { previews });
+      logger.log(repoName, 'INFO', '-', `Preview cleaned up for ${branch}`);
+    }
+    return res.status(200).json({ message: 'Branch deletion handled' });
   }
 
   const commitHash = payload.after || '';
@@ -72,14 +123,17 @@ router.post('/webhook', webhookRateLimiter, express.raw({ type: 'application/jso
     logger.log(repoName, 'ERROR', '-', `Invalid repository URL (not github.com): ${repoUrl}`);
     return res.status(400).json({ message: 'Repository URL must be from github.com' });
   }
-  const timestamp = (payload.repository && payload.repository.pushed_at) || Date.now().toString();
+
+  const isPreview = branch !== 'main';
 
   try {
-    const domain = `${repoName.toLowerCase()}.${config.BASE_DOMAIN}`;
     appConfigService.createAppConfig(repoName, repoUrl);
-    appConfigService.updateAppConfig(repoName, { domain });
-    if (repoName.toLowerCase() === 'sentinel') {
-      appConfigService.updateAppConfig(repoName, { is_sentinel: true, container_port: null });
+    if (!isPreview) {
+      const domain = `${repoName.toLowerCase()}.${config.BASE_DOMAIN}`;
+      appConfigService.updateAppConfig(repoName, { domain });
+      if (repoName.toLowerCase() === 'sentinel') {
+        appConfigService.updateAppConfig(repoName, { is_sentinel: true, container_port: null });
+      }
     }
   } catch (err) {
     logger.log(repoName, 'ERROR', '-', `Failed to create app config: ${err.message}`);
@@ -87,29 +141,34 @@ router.post('/webhook', webhookRateLimiter, express.raw({ type: 'application/jso
   }
 
   try {
-    const deployment = createDeployment({ repo_name: repoName, branch, commit_hash: commitHash, pusher, timestamp });
+    const deployment = createDeployment({ repo_name: repoName, branch, commit_hash: commitHash, pusher, timestamp: payload.repository && payload.repository.pushed_at || Date.now().toString() });
     deploymentService.create(deployment);
 
     const appCfg = appConfigService.getAppConfig(repoName);
-    let hostPort = appCfg && appCfg.host_port || null;
+
+    let hostPort;
     const containerPort = appCfg && appCfg.container_port || 3000;
     const healthPath = appCfg && appCfg.health_path || '/health';
 
-    if (!hostPort) {
-      const allConfigs = appConfigService.getAllAppConfigs();
-      const usedPorts = allConfigs
-        .filter(c => c.repo_name !== repoName && c.host_port)
-        .map(c => c.host_port);
-      hostPort = containerPort;
-      while (usedPorts.includes(hostPort)) {
-        hostPort++;
+    if (isPreview) {
+      // Allocate a port for this preview (re-use existing if already deployed)
+      const existingPreview = appCfg && appCfg.previews && appCfg.previews[branch];
+      if (existingPreview && existingPreview.host_port) {
+        hostPort = existingPreview.host_port;
+      } else {
+        hostPort = findFreePort(repoName, containerPort);
       }
-      appConfigService.updateAppConfig(repoName, { host_port: hostPort });
-      logger.log(repoName, 'INFO', deployment.deployment_id, `Auto-assigned host_port: ${hostPort}`);
+    } else {
+      hostPort = appCfg && appCfg.host_port || null;
+      if (!hostPort) {
+        hostPort = findFreePort(repoName, containerPort);
+        appConfigService.updateAppConfig(repoName, { host_port: hostPort });
+        logger.log(repoName, 'INFO', deployment.deployment_id, `Auto-assigned host_port: ${hostPort}`);
+      }
     }
 
-    pipelineService.trigger(repoName, deployment.deployment_id, repoUrl, commitHash, hostPort, containerPort, healthPath);
-    res.status(200).json({ deployment_id: deployment.deployment_id });
+    pipelineService.trigger(repoName, deployment.deployment_id, repoUrl, commitHash, hostPort, containerPort, healthPath, branch);
+    res.status(200).json({ deployment_id: deployment.deployment_id, is_preview: isPreview });
   } catch (err) {
     logger.log(repoName, 'ERROR', '-', `Deployment creation failed: ${err.message}`);
     res.status(500).json({ message: 'Failed to create deployment' });

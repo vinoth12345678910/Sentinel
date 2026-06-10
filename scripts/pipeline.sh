@@ -10,8 +10,14 @@ HOST_PORT="$5"
 CONTAINER_PORT="$6"
 HEALTH_PATH="$7"
 ENV_FILE="$8"
+BRANCH="${9:-main}"
 
 HEALTH_URL="http://localhost:$HOST_PORT$HEALTH_PATH"
+
+IS_PREVIEW=false
+if [ "$BRANCH" != "main" ]; then
+    IS_PREVIEW=true
+fi
 
 validate_args "REPO_NAME" "$REPO_NAME" "DEPLOYMENT_ID" "$DEPLOYMENT_ID" "REPO_URL" "$REPO_URL" "COMMIT_HASH" "$COMMIT_HASH" "HOST_PORT" "$HOST_PORT" "CONTAINER_PORT" "$CONTAINER_PORT" "HEALTH_PATH" "$HEALTH_PATH"
 
@@ -122,16 +128,36 @@ else
 fi
 
 log_info "Stage 5/5: Configuring Nginx reverse proxy"
-NGINX_OUTPUT=$(run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" "$HEALTH_PATH" || echo "||FAILED||")
+if [ "$IS_PREVIEW" = true ]; then
+    BASE_DOMAIN="${BASE_DOMAIN:-vinoth-sntl.uk}"
+    PREVIEW_SLUG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//' | tr '[:upper:]' '[:lower:]')
+    PREVIEW_DOMAIN="${PREVIEW_SLUG}--$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]').${BASE_DOMAIN}"
+    log_info "Preview domain: $PREVIEW_DOMAIN"
+    NGINX_OUTPUT=$(run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" "$PREVIEW_DOMAIN" || echo "||FAILED||")
+else
+    NGINX_OUTPUT=$(run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" "" || echo "||FAILED||")
+fi
 if [ "$NGINX_OUTPUT" != "||FAILED||" ]; then
     NGINX_DOMAIN=$(echo "$NGINX_OUTPUT" | head -1)
     SSL_OK=$(echo "$NGINX_OUTPUT" | grep "^SSL_OK=" | cut -d= -f2 || echo "0")
     log_info "Nginx configured for domain: $NGINX_DOMAIN"
-    # Register domain with backend
-    curl -s -o /dev/null -X PATCH "$BACKEND_URL/apps/$REPO_NAME/domain" \
-        -H "Content-Type: application/json" \
-        -H "x-api-key: $SENTINEL_API_KEY" \
-        -d "{\"domain\":\"$NGINX_DOMAIN\",\"ssl\":${SSL_OK:-false}}" || log_warn "Failed to register domain with backend"
+    if [ "$IS_PREVIEW" = true ]; then
+        # Register preview domain in app config
+        PREVIEW_DATA=$(cat <<JSONEOF
+{"preview_branch":"$BRANCH","host_port":$HOST_PORT,"domain":"$NGINX_DOMAIN","deployment_id":"$DEPLOYMENT_ID"}
+JSONEOF
+)
+        curl -s -o /dev/null -X PUT "$BACKEND_URL/apps/$REPO_NAME/previews/$BRANCH" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $SENTINEL_API_KEY" \
+            -d "$PREVIEW_DATA" || log_warn "Failed to register preview with backend"
+    else
+        # Register production domain with backend
+        curl -s -o /dev/null -X PATCH "$BACKEND_URL/apps/$REPO_NAME/domain" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $SENTINEL_API_KEY" \
+            -d "{\"domain\":\"$NGINX_DOMAIN\",\"ssl\":${SSL_OK:-false}}" || log_warn "Failed to register domain with backend"
+    fi
 else
     log_warn "Nginx config generation failed — deployment still healthy but may not be accessible via domain"
 fi

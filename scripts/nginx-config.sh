@@ -4,18 +4,21 @@ set -euo pipefail
 
 REPO_NAME="$1"
 HOST_PORT="$2"
-HEALTH_PATH="${3:-/health}"
+DOMAIN="${3:-}"
 
 validate_args "REPO_NAME" "$REPO_NAME" "HOST_PORT" "$HOST_PORT"
 
-BASE_DOMAIN="${BASE_DOMAIN:-vinoth-sntl.uk}"
-DOMAIN=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')."$BASE_DOMAIN"
+# If domain not explicitly provided, auto-generate from repo name
+if [ -z "$DOMAIN" ]; then
+    BASE_DOMAIN="${BASE_DOMAIN:-vinoth-sntl.uk}"
+    DOMAIN=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')."$BASE_DOMAIN"
+fi
 
 log_info "Generating Nginx config for $DOMAIN → localhost:$HOST_PORT"
 
 NGINX_AVAILABLE="/etc/nginx/sites-available"
 NGINX_ENABLED="/etc/nginx/sites-enabled"
-CONFIG_FILE="sentinel-$REPO_NAME.conf"
+CONFIG_FILE="sentinel-$(echo "$DOMAIN" | sed 's/[^a-zA-Z0-9-]/-/g').conf"
 CONFIG_PATH="$NGINX_AVAILABLE/$CONFIG_FILE"
 
 mkdir -p "$NGINX_AVAILABLE" "$NGINX_ENABLED"

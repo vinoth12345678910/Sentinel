@@ -142,6 +142,57 @@ router.patch('/apps/:repoName/domain', authMiddleware, apiRateLimiter, (req, res
   }
 });
 
+// PUT /apps/:repoName/previews/:branch — register/update a preview deployment
+router.put('/apps/:repoName/previews/:branch', authMiddleware, apiRateLimiter, (req, res) => {
+  const { repoName, branch } = req.params;
+  const { host_port, domain, deployment_id } = req.body;
+
+  if (!validateRepoName(repoName)) {
+    return res.status(400).json({ message: 'Invalid repository name' });
+  }
+
+  if (!branch || !host_port || !domain || !deployment_id) {
+    return res.status(400).json({ message: 'Missing required fields: host_port, domain, deployment_id' });
+  }
+
+  const app = appConfigService.getAppConfig(repoName);
+  if (!app) return res.status(404).json({ message: 'App not found' });
+
+  const previews = app.previews || {};
+  previews[branch] = { host_port, domain, deployment_id, created_at: new Date().toISOString() };
+
+  try {
+    const updated = appConfigService.updateAppConfig(repoName, { previews });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to register preview' });
+  }
+});
+
+// DELETE /apps/:repoName/previews/:branch — remove a preview deployment
+router.delete('/apps/:repoName/previews/:branch', authMiddleware, apiRateLimiter, (req, res) => {
+  const { repoName, branch } = req.params;
+
+  if (!validateRepoName(repoName)) {
+    return res.status(400).json({ message: 'Invalid repository name' });
+  }
+
+  const app = appConfigService.getAppConfig(repoName);
+  if (!app) return res.status(404).json({ message: 'App not found' });
+
+  const previews = app.previews || {};
+  if (!previews[branch]) return res.status(404).json({ message: 'Preview not found for this branch' });
+
+  delete previews[branch];
+
+  try {
+    const updated = appConfigService.updateAppConfig(repoName, { previews });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to remove preview' });
+  }
+});
+
 router.get('/apps/:repoName/db-check', authMiddleware, apiRateLimiter, (req, res) => {
   const db = require('../db').getDb();
   const row = db.prepare('SELECT * FROM app_configs WHERE repo_name = ?').get(req.params.repoName);
