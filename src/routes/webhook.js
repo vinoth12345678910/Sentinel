@@ -71,6 +71,9 @@ router.post('/webhook', webhookRateLimiter, express.raw({ type: 'application/jso
 
   try {
     appConfigService.createAppConfig(repoName, repoUrl);
+    if (repoName.toLowerCase() === 'sentinel') {
+      appConfigService.updateAppConfig(repoName, { is_sentinel: true, container_port: null });
+    }
   } catch (err) {
     logger.log(repoName, 'ERROR', '-', `Failed to create app config: ${err.message}`);
     return res.status(500).json({ message: 'Failed to create app config' });
