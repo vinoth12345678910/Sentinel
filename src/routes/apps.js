@@ -10,6 +10,11 @@ const { validateRepoName } = require('../middleware/validateInput');
 
 const router = express.Router();
 
+router.get('/apps', authMiddleware, apiRateLimiter, (req, res) => {
+  const apps = appConfigService.getAllAppConfigs();
+  res.json(apps);
+});
+
 router.get('/apps/:repoName', authMiddleware, apiRateLimiter, (req, res) => {
   const { repoName } = req.params;
   if (!validateRepoName(repoName)) {

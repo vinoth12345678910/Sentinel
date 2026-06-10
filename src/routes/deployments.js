@@ -2,6 +2,7 @@ const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
 const { isValidState } = require('../models/deployment');
 const deploymentService = require('../services/deploymentService');
+const deploymentLogService = require('../services/deploymentLogService');
 const logger = require('../services/loggerService');
 const { apiRateLimiter } = require('../middleware/rateLimiter');
 const { validateDeploymentId } = require('../middleware/validateInput');
@@ -45,6 +46,19 @@ router.patch('/deployments/:deploymentId/state', authMiddleware, apiRateLimiter,
   }
 
   res.json(deployment);
+});
+
+router.get('/deployments/:deploymentId/logs', authMiddleware, apiRateLimiter, (req, res) => {
+  const { deploymentId } = req.params;
+  if (!validateDeploymentId(deploymentId)) {
+    return res.status(400).json({ message: 'Invalid deployment ID' });
+  }
+  try {
+    const logs = deploymentLogService.readLogs(deploymentId);
+    res.json({ deployment_id: deploymentId, logs });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to read logs' });
+  }
 });
 
 module.exports = router;
