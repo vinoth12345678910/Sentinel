@@ -1,15 +1,15 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 . ./common.sh
 
-REPO_NAME=$1
-DEPLOYMENT_ID=$2
-REPO_URL=$3
-COMMIT_HASH=$4
-HOST_PORT=$5
-CONTAINER_PORT=$6
-HEALTH_PATH=$7
-ENV_FILE=$8
+REPO_NAME="$1"
+DEPLOYMENT_ID="$2"
+REPO_URL="$3"
+COMMIT_HASH="$4"
+HOST_PORT="$5"
+CONTAINER_PORT="$6"
+HEALTH_PATH="$7"
+ENV_FILE="$8"
 
 HEALTH_URL="http://localhost:$HOST_PORT$HEALTH_PATH"
 
@@ -23,6 +23,20 @@ fi
 
 log_info "Pipeline started for $REPO_NAME (deployment: $DEPLOYMENT_ID)"
 update_state "STARTED"
+
+STEP_TIMEOUT=600  # 10 minutes per step
+run_step() {
+  local label="$1"
+  shift
+  log_info "Step: $label"
+  timeout "$STEP_TIMEOUT" "$@" || {
+    local rc=$?
+    if [ "$rc" = "124" ]; then
+      log_error "Step '$label' timed out after ${STEP_TIMEOUT}s"
+    fi
+    return "$rc"
+  }
+}
 
 LOCK_FILE="$REPOS_DIR/$REPO_NAME/.deploy.lock"
 CURRENT_TIME=$(date +%s)
@@ -59,14 +73,14 @@ fi
 } > "$LOCK_FILE"
 
 log_info "Stage 1/5: Cloning/pulling repository"
-./clone_pull.sh "$REPO_NAME" "$REPO_URL" "$COMMIT_HASH" "$DEPLOYMENT_ID" || {
+run_step "Clone/Pull" ./clone_pull.sh "$REPO_NAME" "$REPO_URL" "$COMMIT_HASH" "$DEPLOYMENT_ID" || {
     log_error "Clone/pull failed"
     exit 1
 }
 
 if [ "$IS_SENTINEL" = true ]; then
     log_info "Stage 2/5: Deploying Sentinel via PM2"
-    ./deploy-sentinel.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HOST_PORT" "$HEALTH_PATH"
+    run_step "Deploy-Sentinel" ./deploy-sentinel.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HOST_PORT" "$HEALTH_PATH"
     DEPLOY_EXIT=$?
     if [ "$DEPLOY_EXIT" -ne 0 ]; then
         log_error "Sentinel self-deploy failed"
@@ -75,18 +89,18 @@ if [ "$IS_SENTINEL" = true ]; then
     fi
 else
     log_info "Stage 2/5: Building Docker image"
-    ./build.sh "$REPO_NAME" "$DEPLOYMENT_ID" || {
+    run_step "Build" ./build.sh "$REPO_NAME" "$DEPLOYMENT_ID" || {
         log_error "Build failed"
         exit 1
     }
 
     log_info "Stage 3/5: Deploying container"
-    ./deploy.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HOST_PORT" "$CONTAINER_PORT" "$HEALTH_PATH" "$ENV_FILE"
+    run_step "Deploy" ./deploy.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HOST_PORT" "$CONTAINER_PORT" "$HEALTH_PATH" "$ENV_FILE"
     DEPLOY_EXIT=$?
     if [ "$DEPLOY_EXIT" -ne 0 ]; then
         log_error "Deploy failed"
         update_state "FAILED_AT_DEPLOY"
-        ./rollback.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL" "$HOST_PORT" "$CONTAINER_PORT" || {
+        run_step "Rollback" ./rollback.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL" "$HOST_PORT" "$CONTAINER_PORT" || {
             log_error "Rollback also failed"
             update_state "FAILED"
         }
@@ -94,12 +108,12 @@ else
     fi
 
     log_info "Stage 4/5: Verifying deployment health"
-    ./verify.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL"
+    run_step "Verify" ./verify.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL"
     VERIFY_EXIT=$?
     if [ "$VERIFY_EXIT" -ne 0 ]; then
         log_error "Verification failed — starting rollback"
         update_state "FAILED_AT_VERIFY"
-        ./rollback.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL" "$HOST_PORT" "$CONTAINER_PORT" || {
+        run_step "Rollback" ./rollback.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL" "$HOST_PORT" "$CONTAINER_PORT" || {
             log_error "Rollback also failed"
             update_state "FAILED"
         }
@@ -108,7 +122,7 @@ else
 fi
 
 log_info "Stage 5/5: Configuring Nginx reverse proxy"
-./nginx-config.sh "$REPO_NAME" "$HOST_PORT" || {
+run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" || {
     log_warn "Nginx config generation failed — deployment still healthy but may not be accessible via domain"
 }
 

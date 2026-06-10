@@ -1,10 +1,10 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 . ./common.sh
 
-REPO_NAME=$1
-DEPLOYMENT_ID=$2
-HOST_PORT=$3
+REPO_NAME="$1"
+DEPLOYMENT_ID="$2"
+HOST_PORT="$3"
 HEALTH_PATH=$4
 
 validate_args "REPO_NAME" "$REPO_NAME" "DEPLOYMENT_ID" "$DEPLOYMENT_ID" "HOST_PORT" "$HOST_PORT"

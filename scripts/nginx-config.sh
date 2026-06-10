@@ -1,10 +1,10 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 . ./common.sh
 
-REPO_NAME=$1
-HOST_PORT=$2
-DOMAIN_ARGS=$3
+REPO_NAME="$1"
+HOST_PORT="$2"
+DOMAIN_ARGS="$3"
 
 validate_args "REPO_NAME" "$REPO_NAME" "HOST_PORT" "$HOST_PORT"
 
@@ -34,7 +34,7 @@ if [ -n "$DOMAIN_ARGS" ]; then
     done
 fi
 
-if [ ${#DOMAINS[@]} -eq 0 ]; then
+if [ "${#DOMAINS[@]}" -eq 0 ]; then
     DEFAULT_DOMAIN="${REPO_NAME,,}.vinoth-sntl.uk"
     DOMAINS+=("$DEFAULT_DOMAIN")
     HTTP_DOMAINS+=("$DEFAULT_DOMAIN")

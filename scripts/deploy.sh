@@ -1,13 +1,13 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 . ./common.sh
 
-REPO_NAME=$1
-DEPLOYMENT_ID=$2
-HOST_PORT=$3
-CONTAINER_PORT=$4
-HEALTH_PATH=$5
-ENV_FILE=$6
+REPO_NAME="$1"
+DEPLOYMENT_ID="$2"
+HOST_PORT="$3"
+CONTAINER_PORT="$4"
+HEALTH_PATH="$5"
+ENV_FILE="$6"
 
 validate_args "REPO_NAME" "$REPO_NAME" "DEPLOYMENT_ID" "$DEPLOYMENT_ID" "HOST_PORT" "$HOST_PORT" "CONTAINER_PORT" "$CONTAINER_PORT" "HEALTH_PATH" "$HEALTH_PATH"
 
@@ -49,12 +49,16 @@ else
     log_info "No active container found. First deployment."
 fi
 
-DOCKER_OPTS="-d --restart unless-stopped -p \"$HOST_PORT:$CONTAINER_PORT\" --name \"$REPO_NAME\""
+DOCKER_OPTS=(-d --restart unless-stopped -p "$HOST_PORT:$CONTAINER_PORT" --name "$REPO_NAME" \
+  --memory="512m" --cpus="1.0" \
+  --security-opt=no-new-privileges:true \
+  --cap-drop=ALL --cap-add=NET_BIND_SERVICE \
+  --user=1000:1000)
 if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
-    DOCKER_OPTS="$DOCKER_OPTS --env-file \"$ENV_FILE\""
+    DOCKER_OPTS+=(--env-file "$ENV_FILE")
     log_info "Using env file: $ENV_FILE"
 fi
-eval docker run $DOCKER_OPTS "$IMAGE_TAG" || { update_state "FAILED_AT_DEPLOY"; exit 1; }
+docker run "${DOCKER_OPTS[@]}" "$IMAGE_TAG" || { update_state "FAILED_AT_DEPLOY"; exit 1; }
 
 echo "$REPO_NAME" > "$ACTIVE_CONTAINER_FILE"
 echo "$IMAGE_TAG" > "$ACTIVE_IMAGE_FILE"

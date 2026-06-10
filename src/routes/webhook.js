@@ -43,16 +43,12 @@ router.post('/webhook', webhookRateLimiter, express.raw({ type: 'application/jso
     return res.status(400).json({ message: 'Missing signature header' });
   }
 
-  const hmac = crypto.createHmac('sha256', config.GITHUB_WEBHOOK_SECRET);
-  const digest = 'sha256=' + hmac.update(rawBody).digest('hex');
+  const expectedSig = 'sha256=' + crypto.createHmac('sha256', config.GITHUB_WEBHOOK_SECRET).update(rawBody).digest('hex');
+  const sigBuf = Buffer.from(sig);
+  const expectedBuf = Buffer.from(expectedSig);
 
-  try {
-    if (!crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(sig))) {
-      logger.log(repoName, 'ERROR', '-', 'Signature validation failed: invalid signature');
-      return res.status(400).json({ message: 'Invalid signature' });
-    }
-  } catch {
-    logger.log(repoName, 'ERROR', '-', 'Signature validation failed: invalid signature format');
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+    logger.log(repoName, 'ERROR', '-', 'Signature validation failed: invalid signature');
     return res.status(400).json({ message: 'Invalid signature' });
   }
 
@@ -65,8 +61,17 @@ router.post('/webhook', webhookRateLimiter, express.raw({ type: 'application/jso
   }
 
   const commitHash = payload.after || '';
+  if (commitHash && !/^[a-f0-9]{40}$/i.test(commitHash)) {
+    logger.log(repoName, 'ERROR', '-', `Invalid commit hash format: ${commitHash}`);
+    return res.status(400).json({ message: 'Invalid commit hash' });
+  }
+
   const pusher = payload.pusher ? payload.pusher.name : 'unknown';
   const repoUrl = payload.repository && (payload.repository.clone_url || payload.repository.html_url) || '';
+  if (repoUrl && !repoUrl.startsWith('https://github.com/')) {
+    logger.log(repoName, 'ERROR', '-', `Invalid repository URL (not github.com): ${repoUrl}`);
+    return res.status(400).json({ message: 'Repository URL must be from github.com' });
+  }
   const timestamp = (payload.repository && payload.repository.pushed_at) || Date.now().toString();
 
   try {

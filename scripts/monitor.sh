@@ -1,9 +1,9 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 . ./common.sh
 
-REPO_NAME=$1
-HEALTH_URL=$2
+REPO_NAME="$1"
+HEALTH_URL="$2"
 
 validate_args "REPO_NAME" "$REPO_NAME" "HEALTH_URL" "$HEALTH_URL"
 

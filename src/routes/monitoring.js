@@ -1,16 +1,17 @@
 const express = require('express');
 const authMiddleware = require('../middleware/authMiddleware');
 const monitoringService = require('../services/monitoringService');
+const { apiRateLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
-router.get('/metrics', (req, res) => {
+router.get('/metrics', apiRateLimiter, (req, res) => {
   const metrics = monitoringService.generatePrometheusMetrics();
   res.set('Content-Type', 'text/plain; charset=utf-8');
   res.send(metrics);
 });
 
-router.get('/monitoring/health', authMiddleware, (req, res) => {
+router.get('/monitoring/health', authMiddleware, apiRateLimiter, (req, res) => {
   const system = monitoringService.getSystemMetrics();
   const containers = monitoringService.getContainerMetrics();
   const deployments = monitoringService.getDeploymentMetrics();
@@ -42,7 +43,7 @@ router.get('/monitoring/health', authMiddleware, (req, res) => {
   });
 });
 
-router.get('/monitoring/containers', authMiddleware, (req, res) => {
+router.get('/monitoring/containers', authMiddleware, apiRateLimiter, (req, res) => {
   const containers = monitoringService.getContainerMetrics();
   res.json(containers);
 });

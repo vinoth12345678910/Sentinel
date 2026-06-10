@@ -18,20 +18,20 @@ function authMiddleware(req, res, next) {
   }
 
   if (apiKey) {
-    try {
-      if (crypto.timingSafeEqual(Buffer.from(apiKey), Buffer.from(config.SENTINEL_API_KEY))) {
-        req.user = { id: 0, username: 'admin', role: 'owner' };
-        return next();
-      }
+    // Constant-time comparison: always compare same-length buffers
+    const keyBuf = Buffer.from(apiKey);
+    const adminKeyBuf = Buffer.from(config.SENTINEL_API_KEY);
 
-      const db = getDb();
-      const user = db.prepare('SELECT id, username, role FROM users WHERE api_key = ?').get(apiKey);
-      if (user) {
-        req.user = user;
-        return next();
-      }
-    } catch {
-      // fall through to 401
+    if (keyBuf.length === adminKeyBuf.length && crypto.timingSafeEqual(keyBuf, adminKeyBuf)) {
+      req.user = { id: 0, username: 'admin', role: 'owner' };
+      return next();
+    }
+
+    const db = getDb();
+    const user = db.prepare('SELECT id, username, role FROM users WHERE api_key = ?').get(apiKey);
+    if (user) {
+      req.user = user;
+      return next();
     }
   }
 

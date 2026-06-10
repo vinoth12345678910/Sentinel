@@ -1,4 +1,5 @@
 const express = require('express');
+const config = require('../config');
 const authMiddleware = require('../middleware/authMiddleware');
 const { isValidState } = require('../models/deployment');
 const deploymentService = require('../services/deploymentService');
@@ -38,6 +39,11 @@ router.patch('/deployments/:deploymentId/state', authMiddleware, apiRateLimiter,
     return res.status(400).json({
       message: 'Invalid state',
     });
+  }
+
+  const apiKey = req.headers['x-api-key'];
+  if (!apiKey || apiKey !== config.SENTINEL_API_KEY) {
+    return res.status(403).json({ message: 'Only pipeline API key can update deployment state' });
   }
 
   const deployment = deploymentService.updateState(deploymentId, state, failure_reason || null);

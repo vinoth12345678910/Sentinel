@@ -1,8 +1,8 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 . ./common.sh
 
-REPO_NAME=$1
+REPO_NAME="$1"
 
 validate_args "REPO_NAME" "$REPO_NAME"
 

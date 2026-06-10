@@ -1,8 +1,10 @@
 const express = require('express');
 const path = require('path');
+const cors = require('cors');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const timeoutMiddleware = require('./middleware/timeout');
+const hostValidation = require('./middleware/hostValidation');
 const webhookRoutes = require('./routes/webhook');
 const authRoutes = require('./routes/auth');
 const githubRoutes = require('./routes/github');
@@ -22,8 +24,15 @@ const apiDocsRoutes = require('./routes/apiDocs');
 const app = express();
 app.set('trust proxy', 1);
 
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
+}));
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 app.use(cookieParser());
+app.use(hostValidation);
 app.use(timeoutMiddleware);
 
 app.use('/', webhookRoutes);

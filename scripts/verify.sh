@@ -1,10 +1,10 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 . ./common.sh
 
-REPO_NAME=$1
-DEPLOYMENT_ID=$2
-HEALTH_URL=$3
+REPO_NAME="$1"
+DEPLOYMENT_ID="$2"
+HEALTH_URL="$3"
 
 validate_args "REPO_NAME" "$REPO_NAME" "DEPLOYMENT_ID" "$DEPLOYMENT_ID" "HEALTH_URL" "$HEALTH_URL"
 
