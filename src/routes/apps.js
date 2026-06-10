@@ -193,6 +193,29 @@ router.delete('/apps/:repoName/previews/:branch', authMiddleware, apiRateLimiter
   }
 });
 
+// GET /apps/:repoName/custom-domains — list custom domains
+router.get('/apps/:repoName/custom-domains', authMiddleware, apiRateLimiter, (req, res) => {
+  const { repoName } = req.params;
+
+  if (!validateRepoName(repoName)) {
+    return res.status(400).json({ message: 'Invalid repository name' });
+  }
+
+  const app = appConfigService.getAppConfig(repoName);
+  if (!app) return res.status(404).json({ message: 'App not found' });
+
+  const customDomains = app.custom_domains || {};
+  const list = Object.entries(customDomains).map(([domain, info]) => ({
+    id: domain,
+    domain,
+    ssl_enabled: info.ssl || false,
+    verified: info.verified || false,
+    created_at: info.created_at,
+  }));
+
+  res.json(list);
+});
+
 // POST /apps/:repoName/custom-domains/:domain — add a custom domain
 router.post('/apps/:repoName/custom-domains/:domain', authMiddleware, apiRateLimiter, (req, res) => {
   const { repoName, domain } = req.params;

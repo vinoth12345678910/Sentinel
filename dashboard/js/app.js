@@ -353,15 +353,13 @@
     showLoading();
     try {
       if (!(await checkAuth())) { renderLogin(); return; }
-      const [app, deployments, envVars, projects, domains] = await Promise.all([
+      const [app, appDeployments, envVars, projects, domains] = await Promise.all([
         API.getApp(repoName),
-        API.listDeployments(),
+        API.listAppDeployments(repoName).catch(() => []),
         API.getEnvVars(repoName).catch(() => []),
         API.listProjects().catch(() => []),
         API.listDomains(repoName).catch(() => []),
       ]);
-
-      const appDeployments = deployments.filter(d => d.repo_name === repoName);
 
       $app.innerHTML = html`
         <div class="page-header">
@@ -381,6 +379,14 @@
           <div class="detail-item">
             <div class="detail-label">Host Port</div>
             <div class="detail-value">${app.host_port || 'N/A'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">Domain</div>
+            <div class="detail-value">${app.domain ? html`<a href="https://${escape(app.domain)}" target="_blank" style="color:var(--accent);text-decoration:none">${escape(app.domain)}</a>` : 'Not configured'}</div>
+          </div>
+          <div class="detail-item">
+            <div class="detail-label">SSL</div>
+            <div class="detail-value">${app.ssl ? html`<span class="badge badge-success">Active</span>` : html`<span class="badge badge-info">Pending</span>`}</div>
           </div>
           <div class="detail-item">
             <div class="detail-label">Registered</div>
@@ -450,8 +456,8 @@
                       ${domains.map(d => html`
                         <tr>
                           <td><a href="https://${escape(d.domain)}" target="_blank" style="color:var(--accent);text-decoration:none">${escape(d.domain)}</a></td>
-                          <td>${d.ssl_enabled ? html`<span class="badge badge-success">Enabled</span>` : html`<span class="badge badge-info">No</span>`}</td>
-                          <td class="timestamp">${d.ssl_provisioned_at ? formatTime(d.ssl_provisioned_at) : '-'}</td>
+                          <td>${d.ssl_enabled ? html`<span class="badge badge-success">Enabled</span>` : html`<span class="badge badge-info">Pending</span>`}</td>
+                          <td class="timestamp">${d.verified ? 'DNS Verified' : 'Pending'}</td>
                           <td><button class="btn btn-danger btn-sm" onclick="APP.deleteDomain('${escape(repoName)}','${escape(d.id)}','${escape(d.domain)}')">Remove</button></td>
                         </tr>
                       `).join('')}
@@ -464,9 +470,6 @@
                 <label>Domain</label>
                 <input type="text" class="form-input" id="domain-input" placeholder="app.example.com">
               </div>
-              <label style="display:flex;align-items:center;gap:4px;margin-bottom:8px">
-                <input type="checkbox" id="domain-ssl" checked> SSL
-              </label>
               <button type="submit" class="btn btn-primary">Add Domain</button>
             </form>
           </div>
@@ -487,13 +490,14 @@
                   </tr></thead>
                   <tbody>
                     ${appDeployments.map(d => html`
-                      <tr>
-                        <td style="font-family:monospace;font-size:12px">${escape(d.deployment_id)}</td>
-                        <td>${stateBadge(d.state)}${d.failure_reason ? html`<div class="failure-reason">${escape(d.failure_reason)}</div>` : ''}</td>
-                        <td>${d.commit_hash ? html`<span class="commit-hash">${escape(d.commit_hash.substring(0, 8))}</span>` : '-'}</td>
-                        <td class="timestamp">${timeAgo(d.updated_at)}</td>
-                        <td><a href="#/logs/${escape(d.deployment_id)}" class="btn btn-sm">View</a></td>
-                      </tr>
+                        <tr>
+                          <td style="font-family:monospace;font-size:12px">${escape(d.deployment_id)}</td>
+                          <td>${stateBadge(d.state)}${d.failure_reason ? html`<div class="failure-reason">${escape(d.failure_reason)}</div>` : ''}</td>
+                          <td>${d.commit_hash ? html`<span class="commit-hash">${escape(d.commit_hash.substring(0, 8))}</span>` : '-'}</td>
+                          <td class="timestamp">${timeAgo(d.updated_at)}</td>
+                          <td><a href="#/logs/${escape(d.deployment_id)}" class="btn btn-sm">Logs</a></td>
+                          <td>${d.state === 'SUCCESS' ? html`<button class="btn btn-sm btn-danger" onclick="APP.rollbackToDeployment('${escape(repoName)}','${escape(d.deployment_id)}')">Rollback</button>` : ''}</td>
+                        </tr>
                     `).join('')}
                   </tbody>
                 </table>
@@ -522,10 +526,9 @@
         domainForm.addEventListener('submit', async (e) => {
           e.preventDefault();
           const domain = $('#domain-input').value.trim();
-          const ssl_enabled = $('#domain-ssl') ? $('#domain-ssl').checked : true;
           if (!domain) return;
           try {
-            await API.addDomain(repoName, domain, ssl_enabled);
+            await API.addDomain(repoName, domain);
             $('#domain-input').value = '';
             renderApp(repoName);
           } catch (err) {
@@ -1062,6 +1065,16 @@
         renderApp(repoName);
       } catch (err) {
         alert('Failed to remove domain: ' + err.message);
+      }
+    },
+    async rollbackToDeployment(repoName, deploymentId) {
+      if (!confirm(`Rollback ${repoName} to deployment ${deploymentId}?`)) return;
+      try {
+        const result = await API.request('POST', `/apps/${repoName}/deployments/${deploymentId}/rollback`);
+        alert(`Rollback initiated: ${result.deployment_id}`);
+        router();
+      } catch (err) {
+        alert(`Rollback failed: ${err.message}`);
       }
     },
     async deleteTeam(id, name) {
