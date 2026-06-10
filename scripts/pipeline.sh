@@ -122,9 +122,17 @@ else
 fi
 
 log_info "Stage 5/5: Configuring Nginx reverse proxy"
-run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" || {
+NGINX_DOMAIN=$(run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" "$HEALTH_PATH" || echo "")
+if [ -n "$NGINX_DOMAIN" ]; then
+    log_info "Nginx configured for domain: $NGINX_DOMAIN"
+    # Register domain with backend
+    curl -s -o /dev/null -X PATCH "$BACKEND_URL/apps/$REPO_NAME/domain" \
+        -H "Content-Type: application/json" \
+        -H "x-api-key: $SENTINEL_API_KEY" \
+        -d "{\"domain\":\"$NGINX_DOMAIN\"}" || log_warn "Failed to register domain with backend"
+else
     log_warn "Nginx config generation failed — deployment still healthy but may not be accessible via domain"
-}
+fi
 
 if [ "$IS_SENTINEL" = false ]; then
     docker system prune -f --filter "until=24h" 2>/dev/null || true

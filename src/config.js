@@ -35,6 +35,7 @@ const config = {
   SCRIPTS_PATH: scriptsPath,
   DATA_PATH: process.env.DATA_PATH || path.join(__dirname, '../data'),
   BACKEND_URL: process.env.BACKEND_URL || 'http://localhost:3000',
+  BASE_DOMAIN: process.env.BASE_DOMAIN || 'vinoth-sntl.uk',
 };
 
 module.exports = config;

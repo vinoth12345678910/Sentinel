@@ -5,6 +5,9 @@ function createAppConfig(repoName, repoUrl) {
     health_path: '/health',
     container_port: 3000,
     host_port: null,
+    domain: null,
+    ssl: false,
+    custom_domain: null,
     registered_at: null,
     updated_at: null,
   };

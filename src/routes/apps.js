@@ -114,6 +114,29 @@ router.patch('/apps/:repoName', authMiddleware, apiRateLimiter, (req, res) => {
   res.json(updated);
 });
 
+router.patch('/apps/:repoName/domain', authMiddleware, apiRateLimiter, (req, res) => {
+  const { repoName } = req.params;
+  const { domain } = req.body;
+
+  if (!validateRepoName(repoName)) {
+    return res.status(400).json({ message: 'Invalid repository name' });
+  }
+
+  if (!domain || typeof domain !== 'string') {
+    return res.status(400).json({ message: 'domain is required' });
+  }
+
+  const app = appConfigService.getAppConfig(repoName);
+  if (!app) return res.status(404).json({ message: 'App not found' });
+
+  try {
+    const updated = appConfigService.updateAppConfig(repoName, { domain });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to update domain' });
+  }
+});
+
 router.get('/apps/:repoName/db-check', authMiddleware, apiRateLimiter, (req, res) => {
   const db = require('../db').getDb();
   const row = db.prepare('SELECT * FROM app_configs WHERE repo_name = ?').get(req.params.repoName);

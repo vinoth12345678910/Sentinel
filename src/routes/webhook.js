@@ -75,7 +75,9 @@ router.post('/webhook', webhookRateLimiter, express.raw({ type: 'application/jso
   const timestamp = (payload.repository && payload.repository.pushed_at) || Date.now().toString();
 
   try {
+    const domain = `${repoName.toLowerCase()}.${config.BASE_DOMAIN}`;
     appConfigService.createAppConfig(repoName, repoUrl);
+    appConfigService.updateAppConfig(repoName, { domain });
     if (repoName.toLowerCase() === 'sentinel') {
       appConfigService.updateAppConfig(repoName, { is_sentinel: true, container_port: null });
     }
