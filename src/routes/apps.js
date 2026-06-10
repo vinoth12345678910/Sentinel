@@ -260,6 +260,65 @@ router.get('/apps/:repoName/db-check', authMiddleware, apiRateLimiter, (req, res
   res.json({ row });
 });
 
+// GET /apps/:repoName/deployments — list deployments for an app
+router.get('/apps/:repoName/deployments', authMiddleware, apiRateLimiter, (req, res) => {
+  const { repoName } = req.params;
+
+  if (!validateRepoName(repoName)) {
+    return res.status(400).json({ message: 'Invalid repository name' });
+  }
+
+  const deployments = deploymentService.listByApp(repoName);
+  res.json(deployments);
+});
+
+// POST /apps/:repoName/deployments/:deploymentId/rollback — rollback to a specific deployment
+router.post('/apps/:repoName/deployments/:deploymentId/rollback', authMiddleware, apiRateLimiter, (req, res) => {
+  const { repoName, deploymentId } = req.params;
+
+  if (!validateRepoName(repoName)) {
+    return res.status(400).json({ message: 'Invalid repository name' });
+  }
+
+  const appCfg = appConfigService.getAppConfig(repoName);
+  if (!appCfg) {
+    return res.status(404).json({ message: 'App not found' });
+  }
+
+  // Verify target deployment exists and was successful
+  const targetDeployment = deploymentService.read(deploymentId);
+  if (!targetDeployment) {
+    return res.status(404).json({ message: 'Target deployment not found' });
+  }
+  if (targetDeployment.repo_name !== repoName) {
+    return res.status(400).json({ message: 'Deployment does not belong to this app' });
+  }
+  if (targetDeployment.state !== 'SUCCESS') {
+    return res.status(400).json({ message: 'Can only roll back to a successful deployment' });
+  }
+
+  const timestamp = Date.now().toString();
+  const deployment = createDeployment({
+    repo_name: repoName,
+    branch: 'rollback',
+    commit_hash: targetDeployment.commit_hash,
+    pusher: 'api',
+    timestamp,
+  });
+
+  deployment.state = 'ROLLING_BACK';
+  deploymentService.create(deployment);
+
+  const hostPort = appCfg.host_port || 3000;
+  const containerPort = appCfg.container_port || 3000;
+  const healthPath = appCfg.health_path || '/health';
+
+  pipelineService.triggerRollback(repoName, deployment.deployment_id, hostPort, containerPort, healthPath);
+
+  logger.log(repoName, 'INFO', deployment.deployment_id, `Rollback to deployment ${deploymentId} initiated`);
+  res.status(200).json({ deployment_id: deployment.deployment_id, target_deployment: deploymentId, message: 'Rollback initiated' });
+});
+
 router.post('/apps/:repoName/rollback', authMiddleware, apiRateLimiter, (req, res) => {
   const { repoName } = req.params;
 

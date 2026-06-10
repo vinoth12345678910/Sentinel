@@ -105,4 +105,15 @@ function listAll() {
   return all;
 }
 
-module.exports = { create, read, updateState, listAll };
+function listByApp(repoName) {
+  const dir = getDeploymentDir(repoName);
+  if (!fs.existsSync(dir)) return [];
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+  const deployments = files.map(f => {
+    try { return JSON.parse(fs.readFileSync(path.join(dir, f), 'utf-8')); } catch { return null; }
+  }).filter(Boolean);
+  deployments.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  return deployments;
+}
+
+module.exports = { create, read, updateState, listAll, listByApp };
