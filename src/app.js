@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const timeoutMiddleware = require('./middleware/timeout');
 const webhookRoutes = require('./routes/webhook');
 const authRoutes = require('./routes/auth');
+const githubRoutes = require('./routes/github');
 const deploymentRoutes = require('./routes/deployments');
 const healthRoutes = require('./routes/health');
 const appRoutes = require('./routes/apps');
@@ -21,6 +22,7 @@ app.use('/', webhookRoutes);
 app.use(express.json({ limit: '1mb' }));
 app.use('/', healthRoutes);
 app.use('/', authRoutes);
+app.use('/', githubRoutes);
 app.use('/', deploymentRoutes);
 app.use('/', appRoutes);
 

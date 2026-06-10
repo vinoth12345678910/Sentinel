@@ -56,6 +56,7 @@
       $navLinks.innerHTML = html`
         <a href="#/" class="nav-link" data-nav>Apps</a>
         <a href="#/deployments" class="nav-link" data-nav>Deployments</a>
+        <a href="#/settings" class="nav-link" data-nav>Settings</a>
         <a href="#/login" class="nav-link" onclick="APP.logout()" style="margin-left:auto;color:var(--red)">Logout</a>
       `;
     } else {
@@ -400,10 +401,101 @@
     }
   }
 
+  async function renderSettings() {
+    showLoading();
+    try {
+      if (!(await checkAuth())) { renderLogin(); return; }
+
+      $app.innerHTML = html`
+        <div class="page-header">
+          <h1>Settings</h1>
+          <p>GitHub integration and account settings</p>
+        </div>
+        <div class="card">
+          <div class="card-title">GitHub Integration</div>
+          <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px">
+            Connect your GitHub account to import repositories and auto-register webhooks.
+          </p>
+          <a href="/auth/github" class="btn btn-primary">Connect GitHub Account</a>
+        </div>
+        <div class="card">
+          <div class="card-title">Import App from GitHub</div>
+          <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px">
+            Select a repository to import into Sentinel.
+          </p>
+          <button class="btn" onclick="APP.loadRepos()">Load Repositories</button>
+          <div id="repo-list" style="margin-top:16px"></div>
+        </div>
+      `;
+    } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
+      showError(err.message);
+    }
+  }
+
+  async function renderImport() {
+    showLoading();
+    try {
+      if (!(await checkAuth())) { renderLogin(); return; }
+      const repos = await API.listGitHubRepos();
+
+      const unregistered = repos.filter(r => !r.registered);
+      const registered = repos.filter(r => r.registered);
+
+      $app.innerHTML = html`
+        <div class="page-header">
+          <a href="#/settings" class="btn btn-sm" style="margin-bottom:12px;display:inline-flex">&larr; Back</a>
+          <h1>Import from GitHub</h1>
+          <p>${repos.length} repositories found</p>
+        </div>
+        <div class="card">
+          <div class="card-title">Available (${unregistered.length})</div>
+          ${unregistered.length === 0
+            ? '<div class="empty-state"><p>All repos are already registered.</p></div>'
+            : unregistered.map(r => html`
+              <div class="app-card">
+                <div class="app-card-left">
+                  <div>
+                    <div class="app-card-name">${escape(r.name)}</div>
+                    <div class="app-card-repo">${escape(r.language || '')} ${r.private ? html`<span class="badge badge-warning">Private</span>` : ''}</div>
+                  </div>
+                </div>
+                <div class="app-card-right">
+                  <button class="btn btn-primary btn-sm" onclick="APP.importRepo('${escape(r.name)}','${escape(r.url)}')">Import</button>
+                </div>
+              </div>
+            `).join('')}
+        </div>
+        ${registered.length > 0 ? html`
+          <div class="card">
+            <div class="card-title">Already Registered (${registered.length})</div>
+            ${registered.map(r => html`
+              <a href="#/app/${escape(r.name)}" class="app-card">
+                <div class="app-card-left">
+                  <div>
+                    <div class="app-card-name">${escape(r.name)}</div>
+                  </div>
+                </div>
+                <div class="app-card-right">
+                  <span class="badge badge-success">Registered</span>
+                </div>
+              </a>
+            `).join('')}
+          </div>
+        ` : ''}
+      `;
+    } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
+      showError(err.message);
+    }
+  }
+
   async function router() {
     const hash = location.hash.slice(1) || '/';
     if (hash === '/login') { renderLogin(); }
     else if (hash === '/register') { renderRegister(); }
+    else if (hash === '/settings') { renderSettings(); }
+    else if (hash === '/import') { renderImport(); }
     else if (hash.startsWith('/app/')) { renderApp(decodeURIComponent(hash.slice(5))); }
     else if (hash.startsWith('/logs/')) { renderLogs(decodeURIComponent(hash.slice(6))); }
     else if (hash.startsWith('/deployments')) { renderDeployments(); }
@@ -429,6 +521,44 @@
         router();
       } catch (err) {
         alert(`Rollback failed: ${err.message}`);
+      }
+    },
+    async loadRepos() {
+      const el = document.getElementById('repo-list');
+      if (!el) return;
+      el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+      try {
+        const repos = await API.listGitHubRepos();
+        if (repos.length === 0) {
+          el.innerHTML = '<div class="empty-state"><p>No repositories found. Make sure your GitHub account has repos.</p></div>';
+          return;
+        }
+        const unregistered = repos.filter(r => !r.registered);
+        el.innerHTML = unregistered.map(r => html`
+          <div class="app-card" style="cursor:default">
+            <div class="app-card-left">
+              <div>
+                <div class="app-card-name">${escape(r.name)}</div>
+                <div class="app-card-repo">${escape(r.language || '')}</div>
+              </div>
+            </div>
+            <div class="app-card-right">
+              <button class="btn btn-primary btn-sm" onclick="APP.importRepo('${escape(r.name)}','${escape(r.url)}')">Import</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        el.innerHTML = `<div class="empty-state"><p>${escape(err.message)}</p></div>`;
+      }
+    },
+    async importRepo(name, url) {
+      if (!confirm(`Import ${name} into Sentinel?`)) return;
+      try {
+        const result = await API.importApp(name, url);
+        alert(`App "${name}" imported successfully!`);
+        router();
+      } catch (err) {
+        alert(`Import failed: ${err.message}`);
       }
     },
   };

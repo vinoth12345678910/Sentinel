@@ -16,6 +16,10 @@ function getDb() {
 
 function initSchema() {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS _schema_version (
+      version INTEGER PRIMARY KEY
+    );
+
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
@@ -23,6 +27,8 @@ function initSchema() {
       password_hash TEXT NOT NULL,
       api_key TEXT,
       role TEXT NOT NULL DEFAULT 'member',
+      github_id TEXT,
+      github_token_encrypted TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );

@@ -78,5 +78,7 @@ const API = (() => {
     listDeployments: () => request('GET', '/deployments'),
     getDeployment: (id) => request('GET', `/deployments/${id}`),
     getDeploymentLogs: (id) => request('GET', `/deployments/${id}/logs`),
+    listGitHubRepos: () => request('GET', '/github/repos'),
+    importApp: (repo_name, repo_url) => request('POST', '/apps/import', { repo_name, repo_url }),
   };
 })();
