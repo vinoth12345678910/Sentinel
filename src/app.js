@@ -1,8 +1,10 @@
 const express = require('express');
 const path = require('path');
 const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const timeoutMiddleware = require('./middleware/timeout');
 const webhookRoutes = require('./routes/webhook');
+const authRoutes = require('./routes/auth');
 const deploymentRoutes = require('./routes/deployments');
 const healthRoutes = require('./routes/health');
 const appRoutes = require('./routes/apps');
@@ -11,12 +13,14 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(cookieParser());
 app.use(timeoutMiddleware);
 
 app.use('/', webhookRoutes);
 
 app.use(express.json({ limit: '1mb' }));
 app.use('/', healthRoutes);
+app.use('/', authRoutes);
 app.use('/', deploymentRoutes);
 app.use('/', appRoutes);
 

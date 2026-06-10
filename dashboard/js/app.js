@@ -1,9 +1,8 @@
 (function () {
   const $app = document.getElementById('app');
+  const $navLinks = document.querySelector('.nav-links');
 
   function $(sel, parent) { return (parent || document).querySelector(sel); }
-
-  function $$(sel, parent) { return Array.from((parent || document).querySelectorAll(sel)); }
 
   function html(strings, ...vals) {
     return strings.reduce((acc, str, i) => acc + str + (vals[i] !== undefined ? vals[i] : ''), '');
@@ -17,8 +16,7 @@
 
   function formatTime(iso) {
     if (!iso) return '-';
-    const d = new Date(iso);
-    return d.toLocaleString();
+    return new Date(iso).toLocaleString();
   }
 
   function timeAgo(iso) {
@@ -52,21 +50,132 @@
     $app.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   }
 
-  function promptApiKey() {
-    const key = localStorage.getItem('sentinel_token');
-    if (key) return Promise.resolve(key);
-    const entered = prompt('Enter your Sentinel API key:');
-    if (entered) {
-      localStorage.setItem('sentinel_token', entered);
-      return Promise.resolve(entered);
+  function updateNav() {
+    const token = API.getToken();
+    if (token) {
+      $navLinks.innerHTML = html`
+        <a href="#/" class="nav-link" data-nav>Apps</a>
+        <a href="#/deployments" class="nav-link" data-nav>Deployments</a>
+        <a href="#/login" class="nav-link" onclick="APP.logout()" style="margin-left:auto;color:var(--red)">Logout</a>
+      `;
+    } else {
+      $navLinks.innerHTML = html`
+        <a href="#/login" class="nav-link" data-nav style="margin-left:auto">Login</a>
+      `;
     }
-    return Promise.reject(new Error('API key required'));
+    $$('[data-nav]').forEach(el => {
+      el.classList.toggle('active', el.getAttribute('href') === location.hash);
+    });
+  }
+
+  async function checkAuth() {
+    if (API.getToken()) return true;
+    try {
+      const ok = await API.refresh();
+      return ok;
+    } catch { return false; }
+  }
+
+  async function renderLogin() {
+    $app.innerHTML = html`
+      <div style="max-width:400px;margin:64px auto">
+        <div class="card">
+          <div class="card-title" style="text-align:center;font-size:18px;text-transform:none">Sentinel Login</div>
+          <form id="login-form">
+            <div class="form-group">
+              <label>Username or Email</label>
+              <input type="text" id="login-username" class="form-input" required autocomplete="username">
+            </div>
+            <div class="form-group">
+              <label>Password</label>
+              <input type="password" id="login-password" class="form-input" required autocomplete="current-password">
+            </div>
+            <div id="login-error" style="color:var(--red);font-size:14px;margin-bottom:12px;display:none"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Sign In</button>
+          </form>
+          <p style="text-align:center;margin-top:16px;font-size:14px;color:var(--text-secondary)">
+            No account? <a href="#/register" style="color:var(--accent)">Register</a>
+          </p>
+        </div>
+      </div>
+    `;
+    $('#login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = $('#login-error');
+      errEl.style.display = 'none';
+      const btn = e.target.querySelector('button');
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+      try {
+        const data = await API.login($('#login-username').value, $('#login-password').value);
+        API.setToken(data.accessToken);
+        updateNav();
+        router();
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    });
+  }
+
+  async function renderRegister() {
+    $app.innerHTML = html`
+      <div style="max-width:400px;margin:64px auto">
+        <div class="card">
+          <div class="card-title" style="text-align:center;font-size:18px;text-transform:none">Create Account</div>
+          <form id="register-form">
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" id="reg-username" class="form-input" required autocomplete="username">
+            </div>
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="reg-email" class="form-input" required autocomplete="email">
+            </div>
+            <div class="form-group">
+              <label>Password (min 8 chars)</label>
+              <input type="password" id="reg-password" class="form-input" required minlength="8" autocomplete="new-password">
+            </div>
+            <div id="reg-error" style="color:var(--red);font-size:14px;margin-bottom:12px;display:none"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Create Account</button>
+          </form>
+          <p style="text-align:center;margin-top:16px;font-size:14px;color:var(--text-secondary)">
+            Already have an account? <a href="#/login" style="color:var(--accent)">Sign in</a>
+          </p>
+        </div>
+      </div>
+    `;
+    $('#register-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errEl = $('#reg-error');
+      errEl.style.display = 'none';
+      const btn = e.target.querySelector('button');
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+      try {
+        const data = await API.register(
+          $('#reg-username').value,
+          $('#reg-email').value,
+          $('#reg-password').value
+        );
+        API.setToken(data.accessToken);
+        updateNav();
+        router();
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Create Account';
+      }
+    });
   }
 
   async function renderHome() {
     showLoading();
     try {
-      await promptApiKey();
+      if (!(await checkAuth())) { renderLogin(); return; }
       const [health, apps, deployments] = await Promise.all([
         API.getHealth(),
         API.listApps().catch(() => []),
@@ -129,6 +238,7 @@
         </div>
       `;
     } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
       showError(err.message);
     }
   }
@@ -136,7 +246,7 @@
   async function renderApp(repoName) {
     showLoading();
     try {
-      await promptApiKey();
+      if (!(await checkAuth())) { renderLogin(); return; }
       const [app, deployments] = await Promise.all([
         API.getApp(repoName),
         API.listDeployments(),
@@ -202,6 +312,7 @@
         </div>
       `;
     } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
       showError(err.message);
     }
   }
@@ -209,7 +320,7 @@
   async function renderDeployments() {
     showLoading();
     try {
-      await promptApiKey();
+      if (!(await checkAuth())) { renderLogin(); return; }
       const deployments = await API.listDeployments();
 
       $app.innerHTML = html`
@@ -249,6 +360,7 @@
         </div>
       `;
     } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
       showError(err.message);
     }
   }
@@ -256,7 +368,7 @@
   async function renderLogs(deploymentId) {
     showLoading();
     try {
-      await promptApiKey();
+      if (!(await checkAuth())) { renderLogin(); return; }
       const [deployment, logs] = await Promise.all([
         API.getDeployment(deploymentId).catch(() => null),
         API.getDeploymentLogs(deploymentId).catch(() => { throw new Error('Logs not available for this deployment'); }),
@@ -283,37 +395,35 @@
       const viewer = $('.log-viewer');
       if (viewer) viewer.scrollTop = viewer.scrollHeight;
     } catch (err) {
+      if (err.message.includes('Authentication')) { renderLogin(); return; }
       showError(err.message);
     }
   }
 
   async function router() {
     const hash = location.hash.slice(1) || '/';
-    if (hash.startsWith('/app/')) {
-      const name = hash.slice(5);
-      renderApp(decodeURIComponent(name));
-    } else if (hash.startsWith('/logs/')) {
-      const id = hash.slice(6);
-      renderLogs(decodeURIComponent(id));
-    } else if (hash.startsWith('/deployments')) {
-      renderDeployments();
-    } else {
-      renderHome();
-    }
-
-    $$('[data-nav]').forEach(el => {
-      el.classList.toggle('active', el.getAttribute('href') === location.hash);
-    });
+    if (hash === '/login') { renderLogin(); }
+    else if (hash === '/register') { renderRegister(); }
+    else if (hash.startsWith('/app/')) { renderApp(decodeURIComponent(hash.slice(5))); }
+    else if (hash.startsWith('/logs/')) { renderLogs(decodeURIComponent(hash.slice(6))); }
+    else if (hash.startsWith('/deployments')) { renderDeployments(); }
+    else { renderHome(); }
+    updateNav();
   }
 
   window.addEventListener('hashchange', router);
   window.addEventListener('load', router);
 
   window.APP = {
+    async logout() {
+      try { await API.logout(); } catch {}
+      API.setToken(null);
+      updateNav();
+      router();
+    },
     async rollback(repoName) {
       if (!confirm(`Rollback ${repoName} to the previous deployment?`)) return;
       try {
-        await promptApiKey();
         const result = await API.rollbackApp(repoName);
         alert(`Rollback initiated: ${result.deployment_id}`);
         router();
