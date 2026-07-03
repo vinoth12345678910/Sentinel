@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentinel - Admin Console</title>
+  <link rel="stylesheet" href="/dashboard/css/design-system.css">
+  <style>
+    #app { min-height: 100vh; }
+    .login-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-primary);
+      padding: var(--space-4);
+    }
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      padding: var(--space-8);
+    }
+    .login-card h1 {
+      text-align: center;
+      margin-bottom: var(--space-2);
+      font-size: var(--text-2xl);
+    }
+    .login-card p {
+      text-align: center;
+      color: var(--text-secondary);
+      margin-bottom: var(--space-8);
+      font-size: var(--text-sm);
+    }
+    .login-logo {
+      text-align: center;
+      margin-bottom: var(--space-6);
+    }
+    .login-logo svg { width: 40px; height: 40px; display: inline-block; color: var(--purple); }
+    .login-error {
+      background: var(--red-bg);
+      border: 1px solid var(--red-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      color: var(--red);
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-4);
+      display: none;
+    }
+    .login-footer {
+      text-align: center;
+      margin-top: var(--space-6);
+      font-size: var(--text-sm);
+      color: var(--text-muted);
+    }
+    .login-footer a { color: var(--accent); cursor: pointer; }
+    .login-tabs {
+      display: flex;
+      margin-bottom: var(--space-6);
+      border-bottom: 1px solid var(--border);
+    }
+    .login-tab {
+      flex: 1;
+      text-align: center;
+      padding: var(--space-3);
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: var(--text-sm);
+      font-weight: var(--weight-medium);
+      border-bottom: 2px solid transparent;
+      transition: all var(--transition-fast);
+      background: none;
+      border-top: none;
+      border-left: none;
+      border-right: none;
+      font-family: inherit;
+    }
+    .login-tab.active { color: var(--purple); border-bottom-color: var(--purple); }
+    .login-form { display: none; }
+    .login-form.active { display: block; }
+    .sidebar-toggle-mobile { display: none; }
+    @media (max-width: 768px) {
+      .sidebar-toggle-mobile { display: flex; }
+    }
+    .admin-badge-sidebar {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+      font-size: 10px;
+      font-weight: var(--weight-semibold);
+      background: var(--purple-bg);
+      color: var(--purple);
+      border: 1px solid var(--purple-border);
+      margin-left: auto;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script src="/dashboard/js/lib/framework.js"></script>
+  <script src="/dashboard/js/lib/api.js"></script>
+  <script src="/dashboard/js/lib/components.js"></script>
+  <script src="/dashboard/js/pages/home.js"></script>
+  <script src="/dashboard/js/admin/admin-dashboard.js"></script>
+  <script src="/dashboard/js/admin/users.js"></script>
+  <script src="/dashboard/js/admin/security.js"></script>
+  <script src="/dashboard/js/admin/audit.js"></script>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var routes = {
+        '/': { component: 'AdminDashboardPage', title: 'Admin Dashboard' },
+        '/users': { component: 'AdminUsersPage', title: 'Users' },
+        '/security': { component: 'AdminSecurityPage', title: 'Security' },
+        '/audit': { component: 'AdminAuditPage', title: 'Audit Log' },
+      };
+
+      function storeToken(token) {
+        try { localStorage.setItem('sentinel_token', token); } catch (e) {}
+        SentinelStore.setState('token', token);
+        SentinelAPI.setToken(token);
+      }
+
+      function storeUser(user) {
+        try { localStorage.setItem('sentinel_user', JSON.stringify(user)); } catch (e) {}
+        SentinelStore.setState('user', user);
+      }
+
+      function clearAuth() {
+        try { localStorage.removeItem('sentinel_token'); localStorage.removeItem('sentinel_user'); } catch (e) {}
+        SentinelStore.setState('token', null);
+        SentinelStore.setState('user', null);
+        SentinelAPI.clearToken();
+      }
+
+      function getStoredToken() {
+        try { return localStorage.getItem('sentinel_token'); } catch (e) { return null; }
+      }
+
+      function getStoredUser() {
+        try {
+          var raw = localStorage.getItem('sentinel_user');
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+      }
+
+      function showLoginPage() {
+        var lockIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+        var html =
+          '<div class="login-page">' +
+            '<div class="login-card">' +
+              '<div class="login-logo">' + lockIcon + '</div>' +
+              '<h1>Admin Console</h1>' +
+              '<p>Sign in with an admin account</p>' +
+              '<div id="login-error" class="login-error"></div>' +
+              '<div class="login-tabs">' +
+                '<button class="login-tab active" data-tab="login">Sign In</button>' +
+                '<button class="login-tab" data-tab="register">Create Account</button>' +
+              '</div>' +
+              '<div id="login-form" class="login-form active">' +
+                '<div class="form-group">' +
+                  '<label class="form-label" for="login-username">Username</label>' +
+                  '<input type="text" id="login-username" class="form-input" placeholder="Enter your username" autocomplete="username" />' +
+                '</div>' +
+                '<div class="form-group">' +
+                  '<label class="form-label" for="login-password">Password</label>' +
+                  '<input type="password" id="login-password" class="form-input" placeholder="Enter your password" autocomplete="current-password" />' +
+                '</div>' +
+                '<button id="login-btn" class="btn btn-primary" style="width:100%;justify-content:center;padding:var(--space-3);background:var(--purple);border-color:var(--purple);color:#fff">Sign In</button>' +
+              '</div>' +
+              '<div id="register-form" class="login-form">' +
+                '<div class="form-group">' +
+                  '<label class="form-label" for="reg-username">Username</label>' +
+                  '<input type="text" id="reg-username" class="form-input" placeholder="Choose a username" autocomplete="off" />' +
+                '</div>' +
+                '<div class="form-group">' +
+                  '<label class="form-label" for="reg-email">Email</label>' +
+                  '<input type="email" id="reg-email" class="form-input" placeholder="Enter your email" autocomplete="email" />' +
+                '</div>' +
+                '<div class="form-group">' +
+                  '<label class="form-label" for="reg-password">Password</label>' +
+                  '<input type="password" id="reg-password" class="form-input" placeholder="Create a password" autocomplete="new-password" />' +
+                '</div>' +
+                '<div class="form-group">' +
+                  '<label class="form-label" for="reg-confirm">Confirm Password</label>' +
+                  '<input type="password" id="reg-confirm" class="form-input" placeholder="Confirm your password" autocomplete="new-password" />' +
+                '</div>' +
+                '<button id="register-btn" class="btn btn-primary" style="width:100%;justify-content:center;padding:var(--space-3);background:var(--purple);border-color:var(--purple);color:#fff">Create Account</button>' +
+              '</div>' +
+              '<div class="login-footer">' +
+                '<a href="/">Back to home</a>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+
+        document.getElementById('app').innerHTML = html;
+
+        var loginTab = document.querySelector('.login-tab[data-tab="login"]');
+        var registerTab = document.querySelector('.login-tab[data-tab="register"]');
+        var loginForm = document.getElementById('login-form');
+        var registerForm = document.getElementById('register-form');
+
+        loginTab.addEventListener('click', function () {
+          loginTab.classList.add('active');
+          registerTab.classList.remove('active');
+          loginForm.classList.add('active');
+          registerForm.classList.remove('active');
+          document.getElementById('login-error').style.display = 'none';
+        });
+
+        registerTab.addEventListener('click', function () {
+          registerTab.classList.add('active');
+          loginTab.classList.remove('active');
+          registerForm.classList.add('active');
+          loginForm.classList.remove('active');
+          document.getElementById('login-error').style.display = 'none';
+        });
+
+        document.getElementById('login-btn').addEventListener('click', function (e) {
+          e.preventDefault();
+          var username = document.getElementById('login-username').value.trim();
+          var password = document.getElementById('login-password').value;
+          if (!username || !password) {
+            showLoginError('Please fill in all fields.');
+            return;
+          }
+          SentinelAPI.login(username, password)
+            .then(function (data) {
+              if (data && data.accessToken) {
+                storeToken(data.accessToken);
+                storeUser(data.user || { username: username, name: username });
+                initApp();
+              } else {
+                showLoginError('Invalid response from server.');
+              }
+            })
+            .catch(function (err) {
+              showLoginError(err.message || 'Login failed. Please try again.');
+            });
+        });
+
+        document.getElementById('register-btn').addEventListener('click', function (e) {
+          e.preventDefault();
+          var username = document.getElementById('reg-username').value.trim();
+          var email = document.getElementById('reg-email').value.trim();
+          var password = document.getElementById('reg-password').value;
+          var confirm = document.getElementById('reg-confirm').value;
+          if (!username || !email || !password || !confirm) {
+            showLoginError('Please fill in all fields.');
+            return;
+          }
+          if (password !== confirm) {
+            showLoginError('Passwords do not match.');
+            return;
+          }
+          if (password.length < 6) {
+            showLoginError('Password must be at least 6 characters.');
+            return;
+          }
+          SentinelAPI.register(username, email, password)
+            .then(function (data) {
+              if (data && data.accessToken) {
+                storeToken(data.accessToken);
+                storeUser(data.user || { username: username, name: username, email: email });
+                initApp();
+              } else {
+                showLoginError('Invalid response from server.');
+              }
+            })
+            .catch(function (err) {
+              showLoginError(err.message || 'Registration failed. Please try again.');
+            });
+        });
+
+        function showLoginError(msg) {
+          var el = document.getElementById('login-error');
+          if (el) {
+            el.textContent = msg;
+            el.style.display = 'block';
+          }
+        }
+      }
+
+      function initApp() {
+        var user = SentinelStore.getState('user') || getStoredUser() || {};
+        var token = SentinelStore.getState('token') || getStoredToken();
+
+        if (token) {
+          storeToken(token);
+        }
+        if (user) {
+          storeUser(user);
+        }
+
+        var sidebarSections = [
+          {
+            title: 'Admin',
+            items: [
+              { icon: 'monitor', label: 'Dashboard', href: '/' },
+              { icon: 'users', label: 'Users', href: '/users' },
+              { icon: 'lock', label: 'Security', href: '/security' },
+              { icon: 'activity', label: 'Audit Log', href: '/audit' },
+            ]
+          }
+        ];
+
+        var currentPath = window.location.hash ? window.location.hash.slice(1) : '/';
+        sidebarSections._user = user;
+
+        var sidebarHtml = SentinelUI.sidebar(sidebarSections, currentPath);
+
+        var adminBadge = '<span class="admin-badge-sidebar">Admin</span>';
+        sidebarHtml = sidebarHtml.replace('</nav>', '<div style="padding:var(--space-2) var(--space-3)"><a href="/dashboard" class="nav-item" style="color:var(--text-muted);font-size:var(--text-xs)">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>' +
+          '<span>Back to Dashboard</span></a></div></nav>');
+
+        var title = 'Admin Console';
+        var navbarHtml =
+          '<header class="navbar">' +
+            '<div class="navbar-left">' +
+              '<button class="sidebar-toggle" onclick="document.querySelector(\'.sidebar\').classList.toggle(\'open\');document.querySelector(\'.sidebar-overlay\').classList.toggle(\'open\')">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>' +
+              '</button>' +
+              '<h4>' + title + '</h4>' +
+              '<span class="admin-badge" style="font-size:10px;padding:2px 8px;border-radius:var(--radius-full)">Admin</span>' +
+            '</div>' +
+            '<div class="navbar-right">' +
+              '<div class="navbar-search search-desktop">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+                '<input type="text" placeholder="Search..." />' +
+              '</div>' +
+              '<button class="navbar-icon-btn">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' +
+                '<span class="dot"></span>' +
+              '</button>' +
+              '<div class="navbar-avatar" title="' + (user && user.name ? user.name : 'Admin') + '">' +
+                (function () {
+                  var n = user && user.name ? user.name : 'Admin';
+                  var p = n.trim().split(/\s+/);
+                  if (p.length === 1) return p[0].slice(0, 2).toUpperCase();
+                  return (p[0][0] + p[p.length - 1][0]).toUpperCase();
+                })() +
+              '</div>' +
+            '</div>' +
+          '</header>';
+
+        var appHtml =
+          '<div class="app-layout">' +
+            '<div class="sidebar-overlay" onclick="document.querySelector(\'.sidebar\').classList.remove(\'open\');this.classList.remove(\'open\')"></div>' +
+            '<aside class="sidebar">' + sidebarHtml + '</aside>' +
+            '<div class="main-content">' +
+              navbarHtml +
+              '<div class="page-content">' +
+                '<div id="page-content"></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+
+        document.getElementById('app').innerHTML = appHtml;
+
+        var adminRoutes = {};
+        for (var pattern in routes) {
+          if (routes.hasOwnProperty(pattern)) {
+            var compName = routes[pattern].component;
+            if (window.SentinelPages && window.SentinelPages[compName]) {
+              adminRoutes[pattern] = window.SentinelPages[compName];
+            }
+          }
+        }
+
+        SentinelRouter.init(adminRoutes, 'page-content');
+
+        window.addEventListener('hashchange', function () {
+          var path = window.location.hash ? window.location.hash.slice(1) : '/';
+          var sidebarNav = document.querySelector('.sidebar-nav');
+          if (sidebarNav) {
+            var newSidebar = SentinelUI.sidebar(sidebarSections, path);
+            newSidebar = newSidebar.replace('</nav>', '<div style="padding:var(--space-2) var(--space-3)"><a href="/dashboard" class="nav-item" style="color:var(--text-muted);font-size:var(--text-xs)">' +
+              '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>' +
+              '<span>Back to Dashboard</span></a></div></nav>');
+            var sidebar = document.querySelector('.sidebar');
+            if (sidebar) {
+              var existingNav = sidebar.querySelector('.sidebar-nav');
+              var existingFooter = sidebar.querySelector('.sidebar-footer');
+              if (existingNav) {
+                var tempDiv = document.createElement('div');
+                tempDiv.innerHTML = newSidebar;
+                var newNav = tempDiv.querySelector('.sidebar-nav');
+                var newFooter = tempDiv.querySelector('.sidebar-footer');
+                if (newNav) existingNav.innerHTML = newNav.innerHTML;
+                if (newFooter && existingFooter) existingFooter.innerHTML = newFooter.innerHTML;
+              }
+            }
+          }
+        });
+      }
+
+      function showApp() {
+        var token = getStoredToken();
+        var user = getStoredUser();
+
+        if (token && user) {
+          storeToken(token);
+          storeUser(user);
+          initApp();
+          return;
+        }
+
+        if (token) {
+          storeToken(token);
+          SentinelAPI.getMe()
+            .then(function (data) {
+              if (data) {
+                storeUser(data);
+                initApp();
+              } else {
+                return SentinelAPI.refreshToken();
+              }
+            })
+            .then(function (refreshed) {
+              if (refreshed === true) {
+                return SentinelAPI.getMe();
+              }
+              return null;
+            })
+            .then(function (meData) {
+              if (meData) {
+                storeUser(meData);
+                initApp();
+              } else {
+                clearAuth();
+                showLoginPage();
+              }
+            })
+            .catch(function () {
+              clearAuth();
+              showLoginPage();
+            });
+          return;
+        }
+
+        SentinelAPI.refreshToken()
+          .then(function (refreshed) {
+            if (refreshed) {
+              var newToken = SentinelAPI.token;
+              storeToken(newToken);
+              return SentinelAPI.getMe();
+            }
+            return null;
+          })
+          .then(function (meData) {
+            if (meData) {
+              storeUser(meData);
+              initApp();
+            } else {
+              clearAuth();
+              showLoginPage();
+            }
+          })
+          .catch(function () {
+            clearAuth();
+            showLoginPage();
+          });
+      }
+
+      document.addEventListener('DOMContentLoaded', showApp);
+    })();
+  </script>
+</body>
+</html>

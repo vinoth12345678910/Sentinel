@@ -22,8 +22,8 @@ validate_args() {
 
 update_state() {
   state="$1"
-  failure_reason="$2"
-  if [ -n "$BACKEND_URL" ] && [ -n "$SENTINEL_API_KEY" ] && [ -n "$DEPLOYMENT_ID" ]; then
+  failure_reason="${2:-}"
+  if [ -n "${BACKEND_URL:-}" ] && [ -n "${SENTINEL_API_KEY:-}" ] && [ -n "${DEPLOYMENT_ID:-}" ]; then
     if [ -n "$failure_reason" ]; then
       json_data=$(printf '{"state":"%s","failure_reason":"%s"}' "$state" "$failure_reason")
     else

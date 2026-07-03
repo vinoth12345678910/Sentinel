@@ -2,8 +2,8 @@
 set -euo pipefail
 . ./common.sh
 
-REPO_NAME="$1"
-DEPLOYMENT_ID="$2"
+REPO_NAME="${1:-}"
+DEPLOYMENT_ID="${2:-}"
 
 validate_args "REPO_NAME" "$REPO_NAME" "DEPLOYMENT_ID" "$DEPLOYMENT_ID"
 

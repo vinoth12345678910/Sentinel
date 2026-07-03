@@ -25,7 +25,7 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3001', 'http://localhost:3000'],
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key'],
@@ -53,11 +53,36 @@ app.use('/', auditLogRoutes);
 app.use('/', userRoutes);
 app.use('/', apiDocsRoutes);
 
-const dashboardPath = path.join(__dirname, '..', 'dashboard');
-app.use('/dashboard', express.static(dashboardPath));
-app.get('/dashboard', (req, res) => {
-  res.sendFile(path.join(dashboardPath, 'index.html'));
-});
+const frontendOut = path.join(__dirname, '..', 'frontend', 'out');
+
+// Serve Next.js static assets
+app.use('/_next', express.static(path.join(frontendOut, '_next')));
+app.use('/styles', express.static(path.join(frontendOut, 'styles')));
+
+// Dashboard pages
+app.get('/dashboard', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard.html')));
+app.get('/dashboard/activity', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard/activity.html')));
+app.get('/dashboard/projects', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard/projects.html')));
+app.get('/dashboard/projects/:id', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard/projects/[id].html')));
+app.get('/dashboard/apps', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard/apps.html')));
+app.get('/dashboard/apps/:name', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard/apps/[name].html')));
+app.get('/dashboard/apps/:name/deployments/:id', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard/apps/[name]/deployments/[id].html')));
+app.get('/dashboard/create', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard/create.html')));
+app.get('/dashboard/settings', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard/settings.html')));
+app.get('/dashboard/teams', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard/teams.html')));
+app.get('/dashboard/monitoring', (req, res) => res.sendFile(path.join(frontendOut, 'dashboard/monitoring.html')));
+
+// Admin pages
+app.get('/admin', (req, res) => res.sendFile(path.join(frontendOut, 'admin.html')));
+app.get('/admin/users', (req, res) => res.sendFile(path.join(frontendOut, 'admin/users.html')));
+app.get('/admin/security', (req, res) => res.sendFile(path.join(frontendOut, 'admin/security.html')));
+app.get('/admin/audit', (req, res) => res.sendFile(path.join(frontendOut, 'admin/audit.html')));
+
+// Auth pages
+app.get('/login', (req, res) => res.sendFile(path.join(frontendOut, 'login.html')));
+
+// Landing page
+app.get('/', (req, res) => res.sendFile(path.join(frontendOut, 'index.html')));
 
 app.use((err, req, res, next) => {
   if (err.type === 'entity.too.large') {

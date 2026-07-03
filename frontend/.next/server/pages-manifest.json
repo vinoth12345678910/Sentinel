@@ -1,0 +1,23 @@
+{
+  "/_app": "pages/_app.js",
+  "/_error": "pages/_error.js",
+  "/_document": "pages/_document.js",
+  "/admin/audit": "pages/admin/audit.html",
+  "/admin": "pages/admin.html",
+  "/admin/security": "pages/admin/security.html",
+  "/admin/users": "pages/admin/users.html",
+  "/dashboard/activity": "pages/dashboard/activity.html",
+  "/dashboard/apps": "pages/dashboard/apps.html",
+  "/dashboard/apps/[name]": "pages/dashboard/apps/[name].html",
+  "/dashboard/apps/[name]/deployments/[id]": "pages/dashboard/apps/[name]/deployments/[id].html",
+  "/dashboard/create": "pages/dashboard/create.html",
+  "/dashboard": "pages/dashboard.html",
+  "/dashboard/projects": "pages/dashboard/projects.html",
+  "/dashboard/projects/[id]": "pages/dashboard/projects/[id].html",
+  "/dashboard/settings": "pages/dashboard/settings.html",
+  "/dashboard/monitoring": "pages/dashboard/monitoring.html",
+  "/": "pages/index.html",
+  "/login": "pages/login.html",
+  "/dashboard/teams": "pages/dashboard/teams.html",
+  "/404": "pages/404.html"
+}

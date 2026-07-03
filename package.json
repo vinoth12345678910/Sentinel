@@ -10,6 +10,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend",
     "prod": "pm2 start ecosystem.config.js",
     "prod:stop": "pm2 stop sentinel",
     "prod:restart": "pm2 restart sentinel",
@@ -26,5 +28,9 @@
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3"
+  },
+  "allowScripts": {
+    "bcrypt@6.0.0": true,
+    "better-sqlite3@12.10.0": true
   }
 }

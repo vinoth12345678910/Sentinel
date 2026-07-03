@@ -2,14 +2,14 @@
 set -euo pipefail
 . ./common.sh
 
-REPO_NAME="$1"
-DEPLOYMENT_ID="$2"
-REPO_URL="$3"
-COMMIT_HASH="$4"
-HOST_PORT="$5"
-CONTAINER_PORT="$6"
-HEALTH_PATH="$7"
-ENV_FILE="$8"
+REPO_NAME="${1:-}"
+DEPLOYMENT_ID="${2:-}"
+REPO_URL="${3:-}"
+COMMIT_HASH="${4:-}"
+HOST_PORT="${5:-}"
+CONTAINER_PORT="${6:-}"
+HEALTH_PATH="${7:-}"
+ENV_FILE="${8:-}"
 BRANCH="${9:-main}"
 
 HEALTH_URL="http://localhost:$HOST_PORT$HEALTH_PATH"
@@ -22,7 +22,8 @@ fi
 validate_args "REPO_NAME" "$REPO_NAME" "DEPLOYMENT_ID" "$DEPLOYMENT_ID" "REPO_URL" "$REPO_URL" "COMMIT_HASH" "$COMMIT_HASH" "HOST_PORT" "$HOST_PORT" "CONTAINER_PORT" "$CONTAINER_PORT" "HEALTH_PATH" "$HEALTH_PATH"
 
 IS_SENTINEL=false
-if [ "${REPO_NAME,,}" = "sentinel" ]; then
+REPO_NAME_LOWER=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')
+if [ "$REPO_NAME_LOWER" = "sentinel" ]; then
     IS_SENTINEL=true
     log_info "Detected Sentinel self-deploy — using PM2 path"
 fi
