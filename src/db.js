@@ -11,7 +11,25 @@ function getDb() {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   initSchema();
+  runMigrations();
   return db;
+}
+
+function runMigrations() {
+  const row = db.prepare('SELECT MAX(version) as v FROM _schema_version').get();
+  const version = row ? row.v || 0 : 0;
+
+  if (version < 1) {
+    const hasProjectUserId = db.prepare("SELECT COUNT(*) as c FROM pragma_table_info('projects') WHERE name = 'user_id'").get().c > 0;
+    if (!hasProjectUserId) {
+      db.exec("ALTER TABLE projects ADD COLUMN user_id INTEGER REFERENCES users(id)");
+    }
+    const hasAppConfigUserId = db.prepare("SELECT COUNT(*) as c FROM pragma_table_info('app_configs') WHERE name = 'user_id'").get().c > 0;
+    if (!hasAppConfigUserId) {
+      db.exec("ALTER TABLE app_configs ADD COLUMN user_id INTEGER REFERENCES users(id)");
+    }
+    db.prepare('INSERT INTO _schema_version (version) VALUES (1)').run();
+  }
 }
 
 function initSchema() {

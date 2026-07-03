@@ -12,11 +12,11 @@ router.post('/projects', authMiddleware, apiRateLimiter, (req, res) => {
       return res.status(400).json({ message: 'Project name is required' });
     }
     const db = getDb();
-    const existing = db.prepare('SELECT id FROM projects WHERE name = ?').get(name);
+    const existing = db.prepare('SELECT id FROM projects WHERE name = ? AND user_id = ?').get(name, req.user.id);
     if (existing) {
       return res.status(409).json({ message: 'Project already exists' });
     }
-    const result = db.prepare('INSERT INTO projects (name, description) VALUES (?, ?)').run(name, description || null);
+    const result = db.prepare('INSERT INTO projects (name, description, user_id) VALUES (?, ?, ?)').run(name, description || null, req.user.id);
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(project);
   } catch (err) {
@@ -31,9 +31,10 @@ router.get('/projects', authMiddleware, apiRateLimiter, (req, res) => {
       SELECT p.*, COUNT(a.id) as app_count
       FROM projects p
       LEFT JOIN app_configs a ON a.project_id = p.id
+      WHERE p.user_id = ?
       GROUP BY p.id
       ORDER BY p.name
-    `).all();
+    `).all(req.user.id);
     res.json(projects);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -43,7 +44,7 @@ router.get('/projects', authMiddleware, apiRateLimiter, (req, res) => {
 router.get('/projects/:id', authMiddleware, apiRateLimiter, (req, res) => {
   try {
     const db = getDb();
-    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
+    const project = db.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
     if (!project) return res.status(404).json({ message: 'Project not found' });
     const apps = db.prepare('SELECT * FROM app_configs WHERE project_id = ?').all(req.params.id);
     project.apps = apps;
@@ -57,7 +58,7 @@ router.patch('/projects/:id', authMiddleware, apiRateLimiter, (req, res) => {
   try {
     const db = getDb();
     const { name, description } = req.body;
-    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
+    const project = db.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
     if (!project) return res.status(404).json({ message: 'Project not found' });
     const updates = {};
     if (name !== undefined) updates.name = name;
@@ -75,7 +76,7 @@ router.patch('/projects/:id', authMiddleware, apiRateLimiter, (req, res) => {
 router.delete('/projects/:id', authMiddleware, apiRateLimiter, (req, res) => {
   try {
     const db = getDb();
-    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id);
+    const project = db.prepare('SELECT * FROM projects WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
     if (!project) return res.status(404).json({ message: 'Project not found' });
     db.prepare('UPDATE app_configs SET project_id = NULL WHERE project_id = ?').run(req.params.id);
     db.prepare('DELETE FROM projects WHERE id = ?').run(req.params.id);

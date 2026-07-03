@@ -12,13 +12,16 @@ const { validateRepoName } = require('../middleware/validateInput');
 
 const router = express.Router();
 
+function requireAppOwnership(repoName, userId) {
+  const db = getDb();
+  return db.prepare('SELECT id FROM app_configs WHERE repo_name = ? AND user_id = ?').get(repoName, userId);
+}
+
 router.post('/apps/:repoName/env', authMiddleware, apiRateLimiter, (req, res) => {
   try {
     const { repoName } = req.params;
     if (!validateRepoName(repoName)) return res.status(400).json({ message: 'Invalid repo name' });
-
-    const app = appConfigService.getAppConfig(repoName);
-    if (!app) return res.status(404).json({ message: 'App not found' });
+    if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
 
     const { key, value } = req.body;
     if (!key || value === undefined) return res.status(400).json({ message: 'key and value are required' });
@@ -44,9 +47,7 @@ router.get('/apps/:repoName/env', authMiddleware, apiRateLimiter, (req, res) => 
   try {
     const { repoName } = req.params;
     if (!validateRepoName(repoName)) return res.status(400).json({ message: 'Invalid repo name' });
-
-    const app = appConfigService.getAppConfig(repoName);
-    if (!app) return res.status(404).json({ message: 'App not found' });
+    if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
 
     const db = getDb();
     const rows = db.prepare('SELECT key, value_encrypted, created_at, updated_at FROM app_env_vars WHERE repo_name = ?').all(repoName);
@@ -68,6 +69,7 @@ router.delete('/apps/:repoName/env/:key', authMiddleware, apiRateLimiter, (req, 
   try {
     const { repoName, key } = req.params;
     if (!validateRepoName(repoName)) return res.status(400).json({ message: 'Invalid repo name' });
+    if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
 
     const db = getDb();
     db.prepare('DELETE FROM app_env_vars WHERE repo_name = ? AND key = ?').run(repoName, key);
@@ -102,7 +104,9 @@ function writeEnvFile(repoName) {
 
 router.get('/apps/:repoName/env/export', authMiddleware, apiRateLimiter, (req, res) => {
   try {
-    const envFile = writeEnvFile(req.params.repoName);
+    const { repoName } = req.params;
+    if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
+    const envFile = writeEnvFile(repoName);
     if (!envFile) return res.json({ message: 'No env vars', env_file: null });
     res.json({ message: 'Env file written', env_file: envFile });
   } catch (err) {
@@ -114,9 +118,7 @@ router.delete('/apps/:repoName', authMiddleware, apiRateLimiter, (req, res) => {
   try {
     const { repoName } = req.params;
     if (!validateRepoName(repoName)) return res.status(400).json({ message: 'Invalid repo name' });
-
-    const app = appConfigService.getAppConfig(repoName);
-    if (!app) return res.status(404).json({ message: 'App not found' });
+    if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
 
     const db = getDb();
     db.prepare('DELETE FROM app_env_vars WHERE repo_name = ?').run(repoName);

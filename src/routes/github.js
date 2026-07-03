@@ -3,12 +3,35 @@ const crypto = require('crypto');
 const authMiddleware = require('../middleware/authMiddleware');
 const githubService = require('../services/githubService');
 const appConfigService = require('../services/appConfigService');
+const deploymentService = require('../services/deploymentService');
+const pipelineService = require('../services/pipelineService');
 const logger = require('../services/loggerService');
 const config = require('../config');
 const { apiRateLimiter } = require('../middleware/rateLimiter');
 const { validateRepoName } = require('../middleware/validateInput');
+const { createDeployment } = require('../models/deployment');
 
 const router = express.Router();
+
+function findFreePort(repoName, excludePort) {
+  const allConfigs = appConfigService.getAllAppConfigs();
+  const usedPorts = allConfigs
+    .flatMap(c => {
+      const ports = [];
+      if (c.repo_name !== repoName && c.host_port) ports.push(c.host_port);
+      if (c.previews) {
+        Object.values(c.previews).forEach(p => {
+          if (p.host_port) ports.push(p.host_port);
+        });
+      }
+      return ports;
+    });
+  let port = excludePort || 3000;
+  while (usedPorts.includes(port)) {
+    port++;
+  }
+  return port;
+}
 
 router.get('/auth/github', (req, res) => {
   if (!githubService.isConfigured()) {
@@ -104,16 +127,49 @@ router.post('/apps/import', authMiddleware, apiRateLimiter, async (req, res) => 
 
     const db = require('../db').getDb();
     if (project_id) {
-      const proj = db.prepare('SELECT id FROM projects WHERE id = ?').get(project_id);
+      const proj = db.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').get(project_id, req.user.id);
       if (proj) {
         db.prepare('UPDATE app_configs SET project_id = ? WHERE repo_name = ?').run(project_id, repo_name);
       }
     }
 
+    db.prepare('UPDATE app_configs SET user_id = ? WHERE repo_name = ?').run(req.user.id, repo_name);
+
     logger.log(repo_name, 'INFO', '-', 'App imported from GitHub');
+
     const appConfig = appConfigService.getAppConfig(repo_name);
     const row = db.prepare('SELECT project_id FROM app_configs WHERE repo_name = ?').get(repo_name);
     appConfig.project_id = row ? row.project_id : null;
+
+    try {
+      const repoData = await githubService.listUserRepos(token);
+      const match = repoData.find(r => r.name === repo_name);
+      const repoUrl = match ? match.clone_url : repo_url;
+      const defaultBranch = match ? match.default_branch : 'main';
+
+      const timestamp = Date.now().toString();
+      const deployment = createDeployment({
+        repo_name,
+        branch: defaultBranch,
+        commit_hash: 'initial-import',
+        pusher: req.user.username || 'api',
+        timestamp,
+      });
+      deploymentService.create(deployment);
+
+      const containerPort = appConfig.container_port || 3000;
+      const healthPath = appConfig.health_path || '/health';
+      const hostPort = appConfig.host_port || findFreePort(repo_name, 3000);
+      if (!appConfig.host_port) {
+        appConfigService.updateAppConfig(repo_name, { host_port: hostPort });
+      }
+
+      pipelineService.trigger(repo_name, deployment.deployment_id, repoUrl, 'initial-import', hostPort, containerPort, healthPath, defaultBranch);
+      appConfig.deployment_id = deployment.deployment_id;
+    } catch (deployErr) {
+      logger.log(repo_name, 'WARN', '-', `Auto-deploy failed: ${deployErr.message}`);
+    }
+
     res.status(201).json({ message: 'App imported', app: appConfig });
   } catch (err) {
     res.status(500).json({ message: `Import failed: ${err.message}` });

@@ -10,8 +10,15 @@ const { validateRepoName } = require('../middleware/validateInput');
 
 const router = express.Router();
 
+function requireAppOwnership(repoName, userId) {
+  const db = require('../db').getDb();
+  return db.prepare('SELECT id FROM app_configs WHERE repo_name = ? AND user_id = ?').get(repoName, userId);
+}
+
 router.get('/apps', authMiddleware, apiRateLimiter, (req, res) => {
-  const apps = appConfigService.getAllAppConfigs();
+  const db = require('../db').getDb();
+  const rows = db.prepare('SELECT repo_name FROM app_configs WHERE user_id = ?').all(req.user.id);
+  const apps = rows.map(r => appConfigService.getAppConfig(r.repo_name)).filter(Boolean);
   res.json(apps);
 });
 
@@ -20,10 +27,12 @@ router.get('/apps/:repoName', authMiddleware, apiRateLimiter, (req, res) => {
   if (!validateRepoName(repoName)) {
     return res.status(400).json({ message: 'Invalid repository name' });
   }
-  const config = appConfigService.getAppConfig(repoName);
-  if (!config) {
+  const db = require('../db').getDb();
+  const row = db.prepare('SELECT id FROM app_configs WHERE repo_name = ? AND user_id = ?').get(repoName, req.user.id);
+  if (!row) {
     return res.status(404).json({ message: 'App not found' });
   }
+  const config = appConfigService.getAppConfig(repoName);
   res.json(config);
 });
 
@@ -56,16 +65,16 @@ router.post('/apps/:repoName/config', authMiddleware, apiRateLimiter, (req, res)
   }
 
   if (project_id !== undefined) {
-    const proj = require('../db').getDb().prepare('SELECT id FROM projects WHERE id = ?').get(project_id);
+    const proj = require('../db').getDb().prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').get(project_id, req.user.id);
     if (!proj) return res.status(400).json({ message: 'Project not found' });
   }
 
-  const existing = appConfigService.getAppConfig(repoName);
-  if (!existing) {
+  const db = require('../db').getDb();
+  const appRow = db.prepare('SELECT id FROM app_configs WHERE repo_name = ? AND user_id = ?').get(repoName, req.user.id);
+  if (!appRow) {
     return res.status(404).json({ message: 'App not found' });
   }
 
-  const db = require('../db').getDb();
   const updates = {};
   if (health_path !== undefined) updates.health_path = health_path;
   if (container_port !== undefined) updates.container_port = container_port;
@@ -91,17 +100,16 @@ router.patch('/apps/:repoName', authMiddleware, apiRateLimiter, (req, res) => {
     return res.status(400).json({ message: 'Invalid repository name' });
   }
 
-  const app = appConfigService.getAppConfig(repoName);
-  if (!app) return res.status(404).json({ message: 'App not found' });
-
   const db = require('../db').getDb();
+  const appRow = db.prepare('SELECT id FROM app_configs WHERE repo_name = ? AND user_id = ?').get(repoName, req.user.id);
+  if (!appRow) return res.status(404).json({ message: 'App not found' });
   db.prepare('INSERT OR IGNORE INTO app_configs (repo_name) VALUES (?)').run(repoName);
 
   if (project_id !== undefined) {
     if (project_id === null || project_id === '') {
       db.prepare('UPDATE app_configs SET project_id = NULL WHERE repo_name = ?').run(repoName);
     } else {
-      const proj = db.prepare('SELECT id FROM projects WHERE id = ?').get(project_id);
+      const proj = db.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').get(project_id, req.user.id);
       if (!proj) return res.status(400).json({ message: 'Project not found' });
       db.prepare('UPDATE app_configs SET project_id = ? WHERE repo_name = ?').run(project_id, repoName);
     }
@@ -126,8 +134,7 @@ router.patch('/apps/:repoName/domain', authMiddleware, apiRateLimiter, (req, res
     return res.status(400).json({ message: 'domain is required' });
   }
 
-  const app = appConfigService.getAppConfig(repoName);
-  if (!app) return res.status(404).json({ message: 'App not found' });
+  if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
 
   const update = { domain };
   if (req.body.ssl !== undefined) {
@@ -155,8 +162,9 @@ router.put('/apps/:repoName/previews/:branch', authMiddleware, apiRateLimiter, (
     return res.status(400).json({ message: 'Missing required fields: host_port, domain, deployment_id' });
   }
 
+  const appRow = requireAppOwnership(repoName, req.user.id);
+  if (!appRow) return res.status(404).json({ message: 'App not found' });
   const app = appConfigService.getAppConfig(repoName);
-  if (!app) return res.status(404).json({ message: 'App not found' });
 
   const previews = app.previews || {};
   previews[branch] = { host_port, domain, deployment_id, created_at: new Date().toISOString() };
@@ -177,8 +185,8 @@ router.delete('/apps/:repoName/previews/:branch', authMiddleware, apiRateLimiter
     return res.status(400).json({ message: 'Invalid repository name' });
   }
 
+  if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
   const app = appConfigService.getAppConfig(repoName);
-  if (!app) return res.status(404).json({ message: 'App not found' });
 
   const previews = app.previews || {};
   if (!previews[branch]) return res.status(404).json({ message: 'Preview not found for this branch' });
@@ -201,8 +209,7 @@ router.get('/apps/:repoName/custom-domains', authMiddleware, apiRateLimiter, (re
     return res.status(400).json({ message: 'Invalid repository name' });
   }
 
-  const app = appConfigService.getAppConfig(repoName);
-  if (!app) return res.status(404).json({ message: 'App not found' });
+  if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
 
   const customDomains = app.custom_domains || {};
   const list = Object.entries(customDomains).map(([domain, info]) => ({
@@ -229,8 +236,8 @@ router.post('/apps/:repoName/custom-domains/:domain', authMiddleware, apiRateLim
     return res.status(400).json({ message: 'Invalid domain format' });
   }
 
+  if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
   const app = appConfigService.getAppConfig(repoName);
-  if (!app) return res.status(404).json({ message: 'App not found' });
 
   const customDomains = app.custom_domains || {};
   if (customDomains[domain]) {
@@ -259,8 +266,7 @@ router.delete('/apps/:repoName/custom-domains/:domain', authMiddleware, apiRateL
     return res.status(400).json({ message: 'Invalid repository name' });
   }
 
-  const app = appConfigService.getAppConfig(repoName);
-  if (!app) return res.status(404).json({ message: 'App not found' });
+  if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
 
   const customDomains = app.custom_domains || {};
   if (!customDomains[domain]) {
@@ -279,7 +285,7 @@ router.delete('/apps/:repoName/custom-domains/:domain', authMiddleware, apiRateL
 
 router.get('/apps/:repoName/db-check', authMiddleware, apiRateLimiter, (req, res) => {
   const db = require('../db').getDb();
-  const row = db.prepare('SELECT * FROM app_configs WHERE repo_name = ?').get(req.params.repoName);
+  const row = db.prepare('SELECT * FROM app_configs WHERE repo_name = ? AND user_id = ?').get(req.params.repoName, req.user.id);
   res.json({ row });
 });
 
@@ -290,6 +296,8 @@ router.get('/apps/:repoName/deployments', authMiddleware, apiRateLimiter, (req, 
   if (!validateRepoName(repoName)) {
     return res.status(400).json({ message: 'Invalid repository name' });
   }
+
+  if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
 
   const deployments = deploymentService.listByApp(repoName);
   res.json(deployments);
@@ -303,10 +311,8 @@ router.post('/apps/:repoName/deployments/:deploymentId/rollback', authMiddleware
     return res.status(400).json({ message: 'Invalid repository name' });
   }
 
+  if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
   const appCfg = appConfigService.getAppConfig(repoName);
-  if (!appCfg) {
-    return res.status(404).json({ message: 'App not found' });
-  }
 
   // Verify target deployment exists and was successful
   const targetDeployment = deploymentService.read(deploymentId);
@@ -349,10 +355,8 @@ router.post('/apps/:repoName/rollback', authMiddleware, apiRateLimiter, (req, re
     return res.status(400).json({ message: 'Invalid repository name' });
   }
 
+  if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
   const appCfg = appConfigService.getAppConfig(repoName);
-  if (!appCfg) {
-    return res.status(404).json({ message: 'App not found' });
-  }
 
   const timestamp = Date.now().toString();
   const deployment = createDeployment({

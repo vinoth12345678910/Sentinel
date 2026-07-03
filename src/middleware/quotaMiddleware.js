@@ -17,7 +17,7 @@ function checkAppQuota(req, res, next) {
   if (!req.user) return next();
   const quota = ensureQuota(req.user.id);
   const db = getDb();
-  const count = db.prepare('SELECT COUNT(*) as count FROM app_configs').get()?.count || 0;
+  const count = db.prepare('SELECT COUNT(*) as count FROM app_configs WHERE user_id = ?').get(req.user.id)?.count || 0;
   if (count >= quota.max_apps) {
     return res.status(429).json({ message: `App quota exceeded (max ${quota.max_apps} apps)` });
   }
