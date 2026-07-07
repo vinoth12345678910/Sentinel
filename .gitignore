@@ -10,3 +10,4 @@ data/sentinel.db-wal
 repos/
 logs/*.log
 *.tar.gz
+frontend/public/tailwind.css

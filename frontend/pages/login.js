@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
+import Link from 'next/link'
 import { useAuth } from '../lib/AuthContext'
 import I from '../components/Icons'
 
@@ -102,7 +103,7 @@ export default function LoginPage() {
             </form>
           )}
           <div style={style.footer}>
-            <a href="/" style={{ color: 'var(--text-muted)' }}>Back to home</a>
+            <Link href="/" style={{ color: 'var(--text-muted)' }}>Back to home</Link>
           </div>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
+import Link from 'next/link'
 import Head from 'next/head'
 import { Sidebar, Navbar } from './Sidebar'
 import { useAuth } from '../lib/AuthContext'
@@ -49,7 +50,9 @@ export default function Layout({ children, title = 'Dashboard', admin = false })
   const sections = admin ? adminNavSections : navSections
   sections._user = user
 
-  const path = router.asPath
+  const stripBasePath = (asPath, basePath) =>
+    basePath && asPath.startsWith(basePath) ? asPath.slice(basePath.length) || '/' : asPath
+  const path = stripBasePath(router.asPath, router.basePath)
 
   const titleMap = {
     '/dashboard': 'Dashboard',
@@ -75,7 +78,7 @@ export default function Layout({ children, title = 'Dashboard', admin = false })
   return (
     <>
       <Head>
-        <link rel="stylesheet" href="/styles/globals.css" />
+        <link rel="stylesheet" href={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/styles/globals.css`} />
       </Head>
       <div className="app-layout">
       <div
@@ -86,10 +89,10 @@ export default function Layout({ children, title = 'Dashboard', admin = false })
         <Sidebar sections={sections} activePath={path} user={user} />
         {admin && (
           <div style={{ padding: 'var(--space-2) var(--space-3)' }}>
-            <a href="/dashboard" className="nav-item" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
+            <Link href="/dashboard" className="nav-item" style={{ color: 'var(--text-muted)', fontSize: 'var(--text-xs)' }}>
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
               <span>Back to Dashboard</span>
-            </a>
+            </Link>
           </div>
         )}
       </aside>

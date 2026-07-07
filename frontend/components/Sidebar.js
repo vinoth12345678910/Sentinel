@@ -1,13 +1,14 @@
+import Link from 'next/link'
 import I from './Icons'
 
 export function Sidebar({ sections, activePath, user }) {
   return (
     <>
       <div className="sidebar-header">
-        <a href="/dashboard" className="sidebar-logo">
+        <Link href="/dashboard" className="sidebar-logo">
           {I.rocket}
           <span>Sentinel</span>
-        </a>
+        </Link>
       </div>
       <nav className="sidebar-nav">
         {sections.map((sec, si) => {
@@ -18,7 +19,7 @@ export function Sidebar({ sections, activePath, user }) {
               {sec.items.map((item, ii) => {
                 const active = item.href && (activePath === item.href || activePath?.startsWith(item.href))
                 return (
-                  <a
+                  <Link
                     key={ii}
                     href={item.href || '#'}
                     className={`nav-item${active ? ' active' : ''}`}
@@ -26,7 +27,7 @@ export function Sidebar({ sections, activePath, user }) {
                     {I[item.icon] && <span className="nav-icon">{I[item.icon]}</span>}
                     <span>{item.label}</span>
                     {item.badge && <span className={`badge badge-${item.badgeType || 'info'}`}>{item.badge}</span>}
-                  </a>
+                  </Link>
                 )
               })}
             </div>
@@ -34,12 +35,12 @@ export function Sidebar({ sections, activePath, user }) {
         })}
       </nav>
       <div className="sidebar-footer">
-        <a href="/dashboard/settings" className="nav-item">
+        <Link href="/dashboard/settings" className="nav-item">
           <span className="navbar-avatar" style={{ width: 26, height: 26, fontSize: 10, margin: 0 }}>
             {user?.name ? user.name.split(' ').map(s => s[0]).join('').toUpperCase().slice(0, 2) : 'U'}
           </span>
           <span style={{ fontSize: 'var(--text-sm)' }}>{user?.name || 'User'}</span>
-        </a>
+        </Link>
       </div>
     </>
   )

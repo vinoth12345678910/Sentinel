@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
+import Link from 'next/link'
 import { motion, useScroll, useSpring, useTransform } from 'framer-motion'
 import { useAuth } from '../lib/AuthContext'
 import { Shield, ArrowRight, CheckCircle, Terminal, GitBranch, Container, Globe, BarChart3, Activity, Layers, Cpu, HardDrive } from 'lucide-react'
@@ -124,12 +125,12 @@ export default function LandingPage() {
       {/* Nav — floating pill */}
       <nav className="fixed top-5 left-0 right-0 z-[60] flex justify-center">
         <div className="w-full max-w-5xl mx-5 px-6 h-14 flex items-center justify-between rounded-2xl bg-[#020617]/80 backdrop-blur-xl border border-white/[0.08] shadow-2xl">
-          <a href="/" className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3">
             <div className="p-2 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-xl shadow-lg shadow-cyan-500/20">
               <Shield className="w-5 h-5 text-[#020617]" />
             </div>
             <span className="text-lg font-bold bg-gradient-to-r from-white to-white/70 bg-clip-text text-transparent">Sentinel</span>
-          </a>
+          </Link>
           <div className="hidden md:flex items-center gap-10">
             {['Features', 'Pricing'].map((link, i) => (
               <a key={link} href="#" className="text-sm text-slate-400 hover:text-white transition-colors">{link}</a>
