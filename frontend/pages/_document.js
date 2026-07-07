@@ -4,7 +4,7 @@ export default function Document() {
   return (
     <Html lang="en" className="dark">
       <Head>
-        <link rel="stylesheet" href="/styles/globals.css" />
+        <link rel="stylesheet" href="/tailwind.css" />
       </Head>
       <body>
         <Main />

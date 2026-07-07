@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
+import Head from 'next/head'
 import { Sidebar, Navbar } from './Sidebar'
 import { useAuth } from '../lib/AuthContext'
 
@@ -72,7 +73,11 @@ export default function Layout({ children, title = 'Dashboard', admin = false })
   }, [path])
 
   return (
-    <div className="app-layout">
+    <>
+      <Head>
+        <link rel="stylesheet" href="/styles/globals.css" />
+      </Head>
+      <div className="app-layout">
       <div
         className={`sidebar-overlay${sidebarOpen ? ' open' : ''}`}
         onClick={() => setSidebarOpen(false)}
@@ -95,5 +100,6 @@ export default function Layout({ children, title = 'Dashboard', admin = false })
         </div>
       </div>
     </div>
+    </>
   )
 }

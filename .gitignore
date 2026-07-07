@@ -1,4 +1,6 @@
 node_modules/
+.next/
+out/
 .env
 data/apps/*.json
 data/sentinel.db
