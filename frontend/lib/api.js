@@ -105,8 +105,8 @@ class ApiClient {
   listUsers(params) { return this.get('/users', params) }
   updateUser(id, data) { return this.patch(`/users/${encodeURIComponent(id)}`, data) }
   deleteUser(id) { return this.delete(`/users/${encodeURIComponent(id)}`) }
-  getGithubRepos() { return this.get('/auth/github/repos') }
-  importGithubRepo(data) { return this.post('/auth/github/import', data) }
+  getGithubRepos() { return this.get('/github/repos') }
+  importGithubRepo(data) { return this.post('/apps/import', data) }
 }
 
 const api = new ApiClient()

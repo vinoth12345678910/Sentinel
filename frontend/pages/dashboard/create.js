@@ -31,13 +31,16 @@ export default function CreatePage() {
   const handleCreate = async () => {
     setError('')
     if (!name.trim()) { setError('Name is required.'); return }
+    if (!repo.trim()) { setError('GitHub Repository URL is required.'); return }
     setCreating(true)
     try {
       const envObj = {}
       envVars.filter(e => e.key.trim()).forEach(e => { envObj[e.key.trim()] = e.value })
-      await api.createProject({
-        name: name.trim(),
-        repo_url: repo.trim() || undefined,
+      const repoUrl = repo.trim().replace(/\/$/, '')
+      const repoName = name.trim()
+      await api.importGithubRepo({
+        repo_name: repoName,
+        repo_url: repoUrl,
         branch: branch.trim(),
         build_command: buildCmd.trim() || undefined,
         start_command: startCmd.trim() || undefined,
@@ -45,7 +48,7 @@ export default function CreatePage() {
         health_path: healthPath.trim() || '/health',
         env: Object.keys(envObj).length > 0 ? envObj : undefined,
       })
-      router.push('/dashboard/projects')
+      router.push(`/dashboard/apps/${encodeURIComponent(repoName)}`)
     } catch (err) {
       setError(err.message || 'Failed to create app.')
     } finally { setCreating(false) }

@@ -16,11 +16,12 @@ if ! echo "$REPO_URL" | grep -qE '^https://github\.com/'; then
     exit 1
 fi
 
-# Validate commit hash is 40-char hex
-if ! echo "$COMMIT_HASH" | grep -qE '^[a-f0-9]{40}$'; then
-    log_error "Invalid commit hash: must be 40-character hex string"
-    update_state "FAILED_AT_CLONE" "Invalid commit hash"
-    exit 1
+# Validate commit hash is 40-char hex (or 'initial-import' for first deploy)
+if echo "$COMMIT_HASH" | grep -qE '^[a-f0-9]{40}$'; then
+    HAS_VALID_HASH=true
+else
+    HAS_VALID_HASH=false
+    log_warn "Commit hash '$COMMIT_HASH' is not 40-char hex — skipping commit checkout, using default branch"
 fi
 
 log_info "Starting clone/pull for $REPO_NAME"
@@ -38,7 +39,9 @@ if [ -d "$PATH_DIR" ]; then
     git fetch origin || { update_state "FAILED_AT_CLONE"; exit 1; }
     git checkout main || { update_state "FAILED_AT_CLONE"; exit 1; }
     git reset --hard origin/main || { update_state "FAILED_AT_CLONE"; exit 1; }
-    git checkout "$COMMIT_HASH" || { update_state "FAILED_AT_CLONE"; exit 1; }
+    if [ "$HAS_VALID_HASH" = true ]; then
+        git checkout "$COMMIT_HASH" || { update_state "FAILED_AT_CLONE"; exit 1; }
+    fi
 
 else
     log_info "Repository does not exist. Cloning"
@@ -48,7 +51,9 @@ else
     git clone "$REPO_URL" "$PATH_DIR" || { update_state "FAILED_AT_CLONE"; exit 1; }
 
     cd "$PATH_DIR" || { update_state "FAILED_AT_CLONE"; exit 1; }
-    git checkout "$COMMIT_HASH" || { update_state "FAILED_AT_CLONE"; exit 1; }
+    if [ "$HAS_VALID_HASH" = true ]; then
+        git checkout "$COMMIT_HASH" || { update_state "FAILED_AT_CLONE"; exit 1; }
+    fi
 fi
 
 update_state "CLONED"

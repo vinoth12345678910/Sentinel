@@ -93,7 +93,7 @@ router.get('/github/repos', authMiddleware, apiRateLimiter, async (req, res) => 
 
 router.post('/apps/import', authMiddleware, apiRateLimiter, async (req, res) => {
   try {
-    const { repo_name, repo_url } = req.body;
+    const { repo_name, repo_url, build_command, start_command, container_port, health_path, env, project_id } = req.body;
 
     if (!repo_name || !repo_url) {
       return res.status(400).json({ message: 'repo_name and repo_url are required' });
@@ -122,8 +122,17 @@ router.post('/apps/import', authMiddleware, apiRateLimiter, async (req, res) => 
       }
     }
 
-    const { project_id } = req.body;
+    const overrides = {};
+    if (build_command !== undefined) overrides.build_command = build_command;
+    if (start_command !== undefined) overrides.start_command = start_command;
+    if (container_port !== undefined) overrides.container_port = container_port;
+    if (health_path !== undefined) overrides.health_path = health_path;
+    if (env !== undefined) overrides.env = env;
+
     appConfigService.createAppConfig(repo_name, repo_url);
+    if (Object.keys(overrides).length > 0) {
+      appConfigService.updateAppConfig(repo_name, overrides);
+    }
 
     const db = require('../db').getDb();
     if (project_id) {
@@ -142,10 +151,16 @@ router.post('/apps/import', authMiddleware, apiRateLimiter, async (req, res) => 
     appConfig.project_id = row ? row.project_id : null;
 
     try {
-      const repoData = await githubService.listUserRepos(token);
-      const match = repoData.find(r => r.name === repo_name);
-      const repoUrl = match ? match.clone_url : repo_url;
-      const defaultBranch = match ? match.default_branch : 'main';
+      let defaultBranch = 'main';
+      let actualRepoUrl = repo_url;
+      if (token) {
+        const repoData = await githubService.listUserRepos(token).catch(() => []);
+        const match = repoData.find(r => r.name === repo_name);
+        if (match) {
+          actualRepoUrl = match.clone_url;
+          defaultBranch = match.default_branch || 'main';
+        }
+      }
 
       const timestamp = Date.now().toString();
       const deployment = createDeployment({
@@ -157,14 +172,14 @@ router.post('/apps/import', authMiddleware, apiRateLimiter, async (req, res) => 
       });
       deploymentService.create(deployment);
 
-      const containerPort = appConfig.container_port || 3000;
-      const healthPath = appConfig.health_path || '/health';
+      const containerPortFinal = appConfig.container_port || 3000;
+      const healthPathFinal = appConfig.health_path || '/health';
       const hostPort = appConfig.host_port || findFreePort(repo_name, 3000);
       if (!appConfig.host_port) {
         appConfigService.updateAppConfig(repo_name, { host_port: hostPort });
       }
 
-      pipelineService.trigger(repo_name, deployment.deployment_id, repoUrl, 'initial-import', hostPort, containerPort, healthPath, defaultBranch);
+      pipelineService.trigger(repo_name, deployment.deployment_id, actualRepoUrl, 'initial-import', hostPort, containerPortFinal, healthPathFinal, defaultBranch);
       appConfig.deployment_id = deployment.deployment_id;
     } catch (deployErr) {
       logger.log(repo_name, 'WARN', '-', `Auto-deploy failed: ${deployErr.message}`);

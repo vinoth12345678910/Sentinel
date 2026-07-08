@@ -26,7 +26,7 @@ export default function AppsPage() {
     <Layout title="Apps">
       <PageHeader
         title="Apps"
-        actions={<Link href="/dashboard/create" className="btn btn-primary">New App</Link>}
+        actions={<><Link href="/dashboard/import" className="btn btn-primary">Import from GitHub</Link><Link href="/dashboard/create" className="btn btn-ghost" style={{ marginLeft: 'var(--space-2)' }}>Manual Setup</Link></>}
       />
       <div className="search-bar" style={{ marginBottom: 'var(--space-3)' }}>
         <input
