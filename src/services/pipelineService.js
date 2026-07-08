@@ -72,7 +72,7 @@ function trigger(repoName, deploymentId, repoUrl, commitHash, hostPort, containe
     if (timeoutId) clearTimeout(timeoutId);
 
     const reason = signal
-      ? `killed by signal ${signal}${signal === 'SIGTERM' ? ' (timeout after ${PIPELINE_TIMEOUT / 1000}s)' : ''}`
+      ? `killed by signal ${signal}${signal === 'SIGTERM' ? ` (timeout after ${PIPELINE_TIMEOUT / 1000}s)` : ''}`
       : code !== 0 ? `exited with code ${code}` : '';
 
     if (code === 0) {
