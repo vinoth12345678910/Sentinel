@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
+import Head from 'next/head'
 import { useAuth } from '../lib/AuthContext'
 import I from '../components/Icons'
 
@@ -53,7 +54,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={style.loginPage}>
+    <>
+      <Head>
+        <link rel="stylesheet" href={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/styles/globals.css`} />
+      </Head>
+      <div style={style.loginPage}>
       <div className="card" style={style.card}>
         <div className="card-body">
           <div className="login-logo" style={{ textAlign: 'center', marginBottom: 'var(--space-4)' }}>
@@ -108,5 +113,6 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+    </>
   )
 }

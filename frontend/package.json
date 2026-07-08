@@ -6,7 +6,9 @@
     "dev:css": "node scripts/build-css.js",
     "dev": "node scripts/build-css.js && next dev -p 3001",
     "build": "node scripts/build-css.js && next build",
-    "start": "next start -p 3001"
+    "start": "next start -p 3001",
+    "test": "node test/verify-build.js",
+    "pretest": "npm run build"
   },
   "dependencies": {
     "framer-motion": "^12.42.2",

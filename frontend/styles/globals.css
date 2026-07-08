@@ -1611,3 +1611,11 @@ tbody tr:hover td { background: var(--bg-card-hover); }
 
 .filter-bar .search-box { max-width: 280px; }
 .filter-bar .form-select { width: auto; min-width: 140px; }
+
+/* ============ LOGIN PAGE ============ */
+.login-logo { text-align: center; }
+.login-tabs { display: flex; gap: 0; margin-bottom: var(--space-6); border-bottom: 1px solid var(--border); }
+.login-tab { flex: 1; padding: var(--space-3); background: transparent; border: none; color: var(--text-muted); font-size: var(--text-sm); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; font-family: inherit; }
+.login-tab:hover { color: var(--text-secondary); }
+.login-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.login-error { display: none; padding: var(--space-3); background: var(--red-bg); border: 1px solid var(--red-border); border-radius: var(--radius); color: var(--red); font-size: var(--text-sm); margin-bottom: var(--space-4); }
