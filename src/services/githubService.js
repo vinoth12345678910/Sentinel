@@ -82,7 +82,25 @@ async function listUserRepos(token) {
   return res.json();
 }
 
+async function findExistingWebhook(token, repoFullName, webhookUrl) {
+  const res = await fetch(`${GITHUB_API}/repos/${repoFullName}/hooks`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Sentinel',
+    },
+  });
+  if (!res.ok) return null;
+  const hooks = await res.json();
+  return hooks.find(h => h.config?.url === webhookUrl) || null;
+}
+
 async function registerWebhook(token, repoFullName, webhookUrl, secret) {
+  const existing = await findExistingWebhook(token, repoFullName, webhookUrl);
+  if (existing) {
+    return existing;
+  }
+
   const res = await fetch(`${GITHUB_API}/repos/${repoFullName}/hooks`, {
     method: 'POST',
     headers: {
@@ -150,6 +168,7 @@ module.exports = {
   exchangeCodeForToken,
   getAuthenticatedUser,
   listUserRepos,
+  findExistingWebhook,
   registerWebhook,
   storeUserToken,
   getUserToken,

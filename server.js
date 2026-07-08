@@ -62,7 +62,34 @@ function shutdown(signal) {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
+function cleanupStaleDeployments() {
+  try {
+    const deploymentService = require('./src/services/deploymentService');
+    const PIPELINE_TIMEOUT_MS = 600000;
+    const now = Date.now();
+    const all = deploymentService.listAll();
+    let cleaned = 0;
+    for (const dep of all) {
+      if (dep.state === 'PENDING' || dep.state === 'STARTED') {
+        const age = now - new Date(dep.created_at).getTime();
+        if (age > PIPELINE_TIMEOUT_MS) {
+          deploymentService.updateState(dep.deployment_id, 'FAILED_AT_SPAWN', 'timed out (no pipeline activity)');
+          cleaned++;
+        }
+      }
+    }
+    if (cleaned > 0) {
+      console.log(`Cleaned ${cleaned} stale deployment(s)`);
+    }
+  } catch (err) {
+    console.error('Stale deployment cleanup failed:', err.message);
+  }
+}
+
 seedAdmin().then(() => {
+  cleanupStaleDeployments();
+  setInterval(cleanupStaleDeployments, 300000);
+
   server = app.listen(config.PORT, (err) => {
     if (err) {
       console.error(`FATAL: Failed to start server on port ${config.PORT} - ${err.message}`);
