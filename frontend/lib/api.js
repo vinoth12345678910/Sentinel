@@ -24,7 +24,7 @@ class ApiClient {
     const opts = { method, headers: this.getHeaders(), credentials: 'include' }
     if (body !== undefined) opts.body = JSON.stringify(body)
     let res = await fetch(`${API_BASE}${path}`, opts)
-    if (res.status === 401) {
+    if (res.status === 401 && path !== '/auth/refresh') {
       const ok = await this.refreshToken()
       if (!ok) { this.clearToken(); return null }
       opts.headers['Authorization'] = `Bearer ${this.token}`
