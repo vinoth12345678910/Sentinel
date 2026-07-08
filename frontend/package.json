@@ -8,7 +8,8 @@
     "build": "node scripts/build-css.js && next build",
     "start": "next start -p 3001",
     "test": "node test/verify-build.js",
-    "pretest": "npm run build"
+    "pretest": "npm run build",
+    "test:e2e": "node test/screenshot.js"
   },
   "dependencies": {
     "framer-motion": "^12.42.2",
@@ -18,7 +19,9 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.3.2",
+    "playwright": "^1.61.1",
     "postcss": "^8.5.16",
     "tailwindcss": "^4.3.2"
   }

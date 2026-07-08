@@ -11,3 +11,4 @@ repos/
 logs/*.log
 *.tar.gz
 frontend/public/tailwind.css
+frontend/screenshots/
