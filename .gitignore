@@ -2,6 +2,9 @@ node_modules/
 .next/
 out/
 .env
+.env.local
+.env.production
+.env.development
 data/apps/*.json
 data/sentinel.db
 data/sentinel.db-shm

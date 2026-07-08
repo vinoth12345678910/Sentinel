@@ -89,7 +89,31 @@ assert(allHrefOk, 'All href attributes (non-external) start with /sentinel/')
 // 9. Build manifest
 assert(exists('_next/static'), 'Static assets directory exists')
 
-// 10. No next export command needed check
+// 10. No hardcoded localhost:3000 fallback in source (env-var-inlined values are fine)
+// Check source JS for the pattern `|| 'http://localhost:3000'` which indicates a
+// production-unsafe fallback. Inlined env var values (from .env.local) will appear
+// as the plain string without the `||` prefix.
+function walkDir(dir) {
+  var results = []
+  var list = fs.readdirSync(dir)
+  list.forEach(function(file) {
+    var full = path.join(dir, file)
+    var stat = fs.statSync(full)
+    if (stat.isDirectory()) results = results.concat(walkDir(full))
+    else if (file.endsWith('.js')) results.push(full)
+  })
+  return results
+}
+var jsFiles = walkDir(OUT)
+var leakFiles = jsFiles.filter(function(f) {
+  var content = fs.readFileSync(f, 'utf-8')
+  // Pattern: a JS string literal `http://localhost:3000` preceded by `||`
+  // (env var inlining produces just the value without `||`)
+  return /\|\|\s*['"]http:\/\/localhost:3000['"]/.test(content)
+})
+assert(leakFiles.length === 0, 'No hardcoded localhost:3000 fallback in JS bundles (files: ' + leakFiles.join(', ') + ')')
+
+// 11. No next export command needed check
 assert(!fs.existsSync(path.join(OUT, 'export-detail.json')), 'No export-detail.json (using output:export)')
 
 // Summary
