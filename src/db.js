@@ -30,6 +30,14 @@ function runMigrations() {
     }
     db.prepare('INSERT INTO _schema_version (version) VALUES (1)').run();
   }
+
+  if (version < 2) {
+    const hasGithubUsername = db.prepare("SELECT COUNT(*) as c FROM pragma_table_info('users') WHERE name = 'github_username'").get().c > 0;
+    if (!hasGithubUsername) {
+      db.exec("ALTER TABLE users ADD COLUMN github_username TEXT");
+    }
+    db.prepare('INSERT INTO _schema_version (version) VALUES (2)').run();
+  }
 }
 
 function initSchema() {

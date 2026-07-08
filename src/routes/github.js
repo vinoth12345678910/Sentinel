@@ -1,6 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const authMiddleware = require('../middleware/authMiddleware');
+const authService = require('../services/authService');
 const githubService = require('../services/githubService');
 const appConfigService = require('../services/appConfigService');
 const deploymentService = require('../services/deploymentService');
@@ -46,19 +47,31 @@ router.get('/auth/github', (req, res) => {
 router.get('/auth/github/callback', async (req, res) => {
   const { code, state } = req.query;
   if (!code) {
-    return res.status(400).json({ message: 'Missing authorization code' });
+    return res.redirect('/dashboard/settings?github_error=missing_code');
   }
 
   try {
-    const token = await githubService.exchangeCodeForToken(code);
-    const githubUser = await githubService.getAuthenticatedUser(token);
+    const refreshToken = req.cookies && req.cookies.refreshToken;
+    if (!refreshToken) {
+      return res.redirect('/dashboard/settings?github_error=not_authenticated');
+    }
 
-    githubService.storeUserToken(req.user ? req.user.id : 1, githubUser.id.toString(), token);
+    const decoded = authService.verifyRefreshToken(refreshToken);
+    if (!decoded || !decoded.id) {
+      return res.redirect('/dashboard/settings?github_error=session_expired');
+    }
 
-    res.redirect('/dashboard/#/settings');
+    const ghToken = await githubService.exchangeCodeForToken(code);
+    const githubUser = await githubService.getAuthenticatedUser(ghToken);
+
+    githubService.storeUserToken(decoded.id, githubUser.id.toString(), ghToken, githubUser.login);
+
+    logger.log('github', 'INFO', '-', `GitHub connected for user ${decoded.id} (${githubUser.login})`);
+
+    res.redirect('/dashboard/settings?github=connected');
   } catch (err) {
     logger.log('github', 'ERROR', '-', `GitHub OAuth callback failed: ${err.message}`);
-    res.status(500).json({ message: `GitHub OAuth failed: ${err.message}` });
+    res.redirect('/dashboard/settings?github_error=callback_failed');
   }
 });
 
@@ -189,6 +202,16 @@ router.post('/apps/import', authMiddleware, apiRateLimiter, async (req, res) => 
     res.status(201).json({ message: 'App imported', app: appConfig });
   } catch (err) {
     res.status(500).json({ message: `Import failed: ${err.message}` });
+  }
+});
+
+router.post('/auth/github/disconnect', authMiddleware, apiRateLimiter, (req, res) => {
+  try {
+    githubService.clearUserToken(req.user.id);
+    logger.log('github', 'INFO', '-', `GitHub disconnected for user ${req.user.id}`);
+    res.json({ message: 'GitHub disconnected' });
+  } catch (err) {
+    res.status(500).json({ message: `Failed to disconnect: ${err.message}` });
   }
 });
 

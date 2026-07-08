@@ -112,15 +112,15 @@ async function registerWebhook(token, repoFullName, webhookUrl, secret) {
   return res.json();
 }
 
-function storeUserToken(userId, githubId, token) {
+function storeUserToken(userId, githubId, token, githubUsername) {
   const db = getDb();
   const encrypted = encrypt(token);
 
   const existing = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
   if (!existing) throw new Error('User not found');
 
-  db.prepare('UPDATE users SET github_id = ?, github_token_encrypted = ? WHERE id = ?')
-    .run(githubId, encrypted, userId);
+  db.prepare('UPDATE users SET github_id = ?, github_token_encrypted = ?, github_username = ? WHERE id = ?')
+    .run(githubId, encrypted, githubUsername || null, userId);
 }
 
 function getUserToken(userId) {
@@ -134,6 +134,16 @@ function getUserToken(userId) {
   }
 }
 
+function getUserGitHubInfo(userId) {
+  const db = getDb();
+  return db.prepare('SELECT github_id, github_username FROM users WHERE id = ?').get(userId) || null;
+}
+
+function clearUserToken(userId) {
+  const db = getDb();
+  db.prepare('UPDATE users SET github_id = NULL, github_token_encrypted = NULL, github_username = NULL WHERE id = ?').run(userId);
+}
+
 module.exports = {
   isConfigured,
   getAuthorizationUrl,
@@ -143,4 +153,6 @@ module.exports = {
   registerWebhook,
   storeUserToken,
   getUserToken,
+  getUserGitHubInfo,
+  clearUserToken,
 };

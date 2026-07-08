@@ -107,6 +107,7 @@ class ApiClient {
   deleteUser(id) { return this.delete(`/users/${encodeURIComponent(id)}`) }
   getGithubRepos() { return this.get('/github/repos') }
   importGithubRepo(data) { return this.post('/apps/import', data) }
+  disconnectGithub() { return this.post('/auth/github/disconnect') }
 }
 
 const api = new ApiClient()

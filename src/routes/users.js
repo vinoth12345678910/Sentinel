@@ -39,7 +39,7 @@ router.patch('/users/:id', authMiddleware, requireRole('admin'), apiRateLimiter,
 
 router.get('/users/me', authMiddleware, apiRateLimiter, (req, res) => {
   const db = getDb();
-  const user = db.prepare('SELECT id, username, email, role, created_at, updated_at FROM users WHERE id = ?').get(req.user.id);
+  const user = db.prepare('SELECT id, username, email, role, github_id, github_username, created_at, updated_at FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found' });
   res.json(user);
 });

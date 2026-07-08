@@ -1619,3 +1619,4 @@ tbody tr:hover td { background: var(--bg-card-hover); }
 .login-tab:hover { color: var(--text-secondary); }
 .login-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 .login-error { display: none; padding: var(--space-3); background: var(--red-bg); border: 1px solid var(--red-border); border-radius: var(--radius); color: var(--red); font-size: var(--text-sm); margin-bottom: var(--space-4); }
+.login-success { display: none; padding: var(--space-3); background: var(--green-bg, #1a3a2a); border: 1px solid var(--green-border, #2d6a4f); border-radius: var(--radius); color: var(--green, #52b788); font-size: var(--text-sm); margin-bottom: var(--space-4); }

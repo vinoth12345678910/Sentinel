@@ -34,7 +34,7 @@ export default function DeploymentDetailPage() {
     // Connect to SSE stream for live logs
     const token = api.token
     if (!token) return
-    const url = `${process.env.NEXT_PUBLIC_API_URL || ''}/deployments/${encodeURIComponent(decodedId)}/stream?token=${encodeURIComponent(token)}`
+    const url = `${process.env.NEXT_PUBLIC_API_URL || ''}/deployments/${encodeURIComponent(decodedId)}/logs/stream?token=${encodeURIComponent(token)}`
     
     const es = new EventSource(url)
     eventSourceRef.current = es
