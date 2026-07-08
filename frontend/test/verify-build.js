@@ -50,7 +50,27 @@ var cssLinks = landing.match(/<link[^>]*rel="stylesheet"[^>]*>/g) || []
 assert(cssLinks.length === 1, 'Landing page: exactly 1 CSS link')
 assert(cssLinks[0].includes('/sentinel/tailwind.css'), 'Landing page: CSS link points to /sentinel/tailwind.css')
 
-// 5. Login page
+// 5. Import page (GitHub repo picker — dynamic content renders client-side)
+var importPage = read('dashboard/import.html')
+assert(importPage.includes('Import App'), 'Import page: title is "Import App"')
+assert(importPage.includes('sidebar'), 'Import page: has dashboard sidebar')
+
+// Find and check the import JS chunk for API references
+var CHUNKS = path.join(OUT, '_next/static/chunks/pages/dashboard')
+var importChunkFile = fs.readdirSync(CHUNKS).filter(function(f) { return f.startsWith('import-') && f.endsWith('.js') })[0]
+var importChunkContent = importChunkFile ? fs.readFileSync(path.join(CHUNKS, importChunkFile), 'utf-8') : ''
+assert(importChunkContent.includes('getGithubRepos'), 'Import JS bundle: references getGithubRepos API call')
+assert(importChunkContent.includes('importGithubRepo'), 'Import JS bundle: references importGithubRepo API call')
+assert(importChunkContent.includes('/dashboard/create'), 'Import JS bundle: has link to manual setup wizard')
+
+// 6. Create page (manual wizard — pre-rendered form fields)
+var createPage = read('dashboard/create.html')
+assert(createPage.includes('Create New App'), 'Create page: contains "Create New App" heading')
+assert(createPage.includes('GitHub Repository URL'), 'Create page: has GitHub repo URL field')
+assert(createPage.includes('Create App'), 'Create page: Layout title is "Create App"')
+assert(createPage.includes('Next: Environment'), 'Create page: has step-2 navigation button')
+
+// 7. Login page
 var login = read('login.html')
 assert(login.includes('Sign In'), 'Login page: contains "Sign In"')
 assert(login.includes('Create Account'), 'Login page: contains "Create Account"')
@@ -58,13 +78,13 @@ assert(login.includes('Enter your username'), 'Login page: has username field')
 assert(login.includes('Enter your password'), 'Login page: has password field')
 assert(login.includes('Back to home'), 'Login page: has "Back to home" link')
 
-// 6. Login page — loads globals.css for styling
+// 8. Login page — loads globals.css for styling
 var loginCss = login.match(/<link[^>]*rel="stylesheet"[^>]*>/g) || []
 assert(loginCss.length >= 2, 'Login page: loads at least 2 CSS files (tailwind.css + globals.css)')
 var hasGlobals = loginCss.some(function(l) { return l.includes('/sentinel/styles/globals.css') })
 assert(hasGlobals, 'Login page: loads globals.css with /sentinel prefix')
 
-// 7. Dashboard page
+// 9. Dashboard page
 var dash = read('dashboard.html')
 assert(dash.includes('sidebar'), 'Dashboard page: has sidebar')
 assert(dash.includes('app-layout'), 'Dashboard page: has app-layout')
@@ -74,22 +94,23 @@ var dashCss = dash.match(/<link[^>]*rel="stylesheet"[^>]*>/g) || []
 var hasDashGlobals = dashCss.some(function(l) { return l.includes('/sentinel/styles/globals.css') })
 assert(hasDashGlobals, 'Dashboard page: loads globals.css with /sentinel prefix')
 
-// 8. Asset URLs — all prefixed with /sentinel
-var allSrc = (landing + login + dash).match(/src="\/[^"]+/g) || []
+// 10. Asset URLs — all prefixed with /sentinel
+var allPages = landing + login + dash + importPage + createPage
+var allSrc = allPages.match(/src="\/[^"]+/g) || []
 var allSrcOk = allSrc.every(function(s) { return s.startsWith('src="/sentinel/') || s.startsWith('src="https://') })
 assert(allSrcOk, 'All src attributes start with /sentinel/ (or are external)')
 
-var allHref = (landing + login + dash).match(/href="\/[^"]+/g) || []
+var allHref = allPages.match(/href="\/[^"]+/g) || []
 var externalOk = [/^href="\/sentinel(\/|"|$)/, /^href="\/\/localhost/, /^href="https?:\/\//]
 var allHrefOk = allHref.every(function(h) {
   return externalOk.some(function(re) { return re.test(h) })
 })
 assert(allHrefOk, 'All href attributes (non-external) start with /sentinel/')
 
-// 9. Build manifest
+// 11. Build manifest
 assert(exists('_next/static'), 'Static assets directory exists')
 
-// 10. No hardcoded localhost:3000 fallback in source (env-var-inlined values are fine)
+// 12. No hardcoded localhost:3000 fallback in source (env-var-inlined values are fine)
 // Check source JS for the pattern `|| 'http://localhost:3000'` which indicates a
 // production-unsafe fallback. Inlined env var values (from .env.local) will appear
 // as the plain string without the `||` prefix.
@@ -113,7 +134,7 @@ var leakFiles = jsFiles.filter(function(f) {
 })
 assert(leakFiles.length === 0, 'No hardcoded localhost:3000 fallback in JS bundles (files: ' + leakFiles.join(', ') + ')')
 
-// 11. No next export command needed check
+// 13. No next export command needed check
 assert(!fs.existsSync(path.join(OUT, 'export-detail.json')), 'No export-detail.json (using output:export)')
 
 // Summary

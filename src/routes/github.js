@@ -135,6 +135,7 @@ router.post('/apps/import', authMiddleware, apiRateLimiter, async (req, res) => 
     }
 
     const db = require('../db').getDb();
+    db.prepare('INSERT OR IGNORE INTO app_configs (repo_name, repo_url) VALUES (?, ?)').run(repo_name, repo_url);
     if (project_id) {
       const proj = db.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').get(project_id, req.user.id);
       if (proj) {
