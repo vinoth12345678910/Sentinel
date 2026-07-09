@@ -60,13 +60,13 @@ CFGEOF
 
 ln -sf "$CONFIG_PATH" "$NGINX_ENABLED/$CONFIG_FILE"
 
-nginx -t 2>&1 || {
+nginx -t > /dev/null 2>&1 || {
     log_error "Nginx config test failed for $DOMAIN"
     rm -f "$NGINX_ENABLED/$CONFIG_FILE"
     exit 1
 }
 
-systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || log_warn "Could not reload nginx — reload manually"
+systemctl reload nginx >/dev/null 2>/dev/null || nginx -s reload >/dev/null 2>/dev/null || log_warn "Could not reload nginx — reload manually"
 
 log_info "Nginx config live: http://$DOMAIN → localhost:$HOST_PORT"
 echo "$DOMAIN"
