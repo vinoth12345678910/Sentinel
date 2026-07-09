@@ -69,26 +69,5 @@ nginx -t 2>&1 || {
 systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || log_warn "Could not reload nginx — reload manually"
 
 log_info "Nginx config live: http://$DOMAIN → localhost:$HOST_PORT"
-
-# Provision SSL if possible (non-blocking — app works via HTTP even if SSL fails)
-SSL_OK=0
-if [ -f "./provision-ssl.sh" ]; then
-    CUSTOM_DOMAINS_ARGS=()
-    if [ -n "${CUSTOM_DOMAINS:-}" ]; then
-        IFS=',' read -ra DOMAINS <<< "$CUSTOM_DOMAINS"
-        for CD in "${DOMAINS[@]}"; do
-            read -r CD_TRIMMED <<< "$CD"
-            if [ -n "$CD_TRIMMED" ]; then
-                CUSTOM_DOMAINS_ARGS+=("$CD_TRIMMED")
-            fi
-        done
-    fi
-    if ./provision-ssl.sh "$DOMAIN" "${CUSTOM_DOMAINS_ARGS[@]}" 2>&1; then
-        SSL_OK=1
-        log_info "SSL provisioned for $DOMAIN"
-    fi
-fi
-
 echo "$DOMAIN"
-echo "SSL_OK=$SSL_OK"
 exit 0

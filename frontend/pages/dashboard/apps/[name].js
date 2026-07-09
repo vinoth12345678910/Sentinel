@@ -91,7 +91,7 @@ export default function AppDetailPage() {
             <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
               <div><span className="text-muted">Repository:</span> {app.repo_url || '-'}</div>
               <div><span className="text-muted">Health Path:</span> {app.health_path || '-'}</div>
-              <div><span className="text-muted">Domain:</span> {app.domain || '-'}</div>
+              <div><span className="text-muted">Domain:</span> {app.domain || '-'} {app.ssl ? <span className="badge badge-success">HTTPS</span> : app.domain ? <span className="badge badge-warning">HTTP</span> : null}</div>
               <div><span className="text-muted">Created:</span> {app.registered_at ? formatDate(app.registered_at) : '-'}</div>
             </div>
           </Card>

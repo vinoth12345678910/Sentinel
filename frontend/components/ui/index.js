@@ -26,6 +26,8 @@ export function StatusBadge({ status }) {
     active: 'success',
     deployed: 'success',
     success: 'success',
+    ssl_provisioning: 'info',
+    provisioning: 'info',
     pending: 'warning',
     deploying: 'warning',
     building: 'warning',

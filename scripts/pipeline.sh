@@ -85,7 +85,7 @@ fi
     echo "$DEPLOYMENT_ID"
 } > "$LOCK_FILE"
 
-log_info "Stage 1/5: Cloning/pulling repository"
+log_info "Stage 1: Cloning/pulling repository"
 run_step "Clone/Pull" ./clone_pull.sh "$REPO_NAME" "$REPO_URL" "$COMMIT_HASH" "$DEPLOYMENT_ID" "$BRANCH" || {
     log_error "Clone/pull failed"
     update_state "FAILED_AT_CLONE"
@@ -93,7 +93,7 @@ run_step "Clone/Pull" ./clone_pull.sh "$REPO_NAME" "$REPO_URL" "$COMMIT_HASH" "$
 }
 
 if [ "$IS_SENTINEL" = true ]; then
-    log_info "Stage 2/5: Deploying Sentinel via PM2"
+    log_info "Stage 2: Deploying Sentinel via PM2"
     run_step "Deploy-Sentinel" ./deploy-sentinel.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HOST_PORT" "$HEALTH_PATH"
     DEPLOY_EXIT=$?
     if [ "$DEPLOY_EXIT" -ne 0 ]; then
@@ -102,13 +102,13 @@ if [ "$IS_SENTINEL" = true ]; then
         exit 1
     fi
 else
-    log_info "Stage 2/5: Building Docker image"
+    log_info "Stage 2: Building Docker image"
     run_step "Build" ./build.sh "$REPO_NAME" "$DEPLOYMENT_ID" || {
         log_error "Build failed"
         exit 1
     }
 
-    log_info "Stage 3/5: Deploying container"
+    log_info "Stage 3: Deploying container"
     run_step "Deploy" ./deploy.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HOST_PORT" "$CONTAINER_PORT" "$HEALTH_PATH" "$ENV_FILE"
     DEPLOY_EXIT=$?
     if [ "$DEPLOY_EXIT" -ne 0 ]; then
@@ -121,7 +121,7 @@ else
         exit 1
     fi
 
-    log_info "Stage 4/5: Verifying deployment health"
+    log_info "Stage 4: Verifying deployment health"
     run_step "Verify" ./verify.sh "$REPO_NAME" "$DEPLOYMENT_ID" "$HEALTH_URL"
     VERIFY_EXIT=$?
     if [ "$VERIFY_EXIT" -ne 0 ]; then
@@ -135,7 +135,7 @@ else
     fi
 fi
 
-log_info "Stage 5/5: Configuring Nginx reverse proxy"
+log_info "Stage 5: Configuring Nginx reverse proxy"
 
 # Fetch custom domains from backend for this app
 CUSTOM_DOMAINS=""
@@ -160,16 +160,55 @@ if [ "$IS_PREVIEW" = true ]; then
     PREVIEW_SLUG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//' | tr '[:upper:]' '[:lower:]')
     PREVIEW_DOMAIN="${PREVIEW_SLUG}--$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]').${BASE_DOMAIN}"
     log_info "Preview domain: $PREVIEW_DOMAIN"
-    NGINX_OUTPUT=$(run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" "$PREVIEW_DOMAIN" || echo "||FAILED||")
+    NGINX_DOMAIN=$(run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" "$PREVIEW_DOMAIN" || echo "")
 else
-    NGINX_OUTPUT=$(run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" "" || echo "||FAILED||")
+    NGINX_DOMAIN=$(run_step "Nginx-Config" ./nginx-config.sh "$REPO_NAME" "$HOST_PORT" "" || echo "")
 fi
-if [ "$NGINX_OUTPUT" != "||FAILED||" ]; then
-    NGINX_DOMAIN=$(echo "$NGINX_OUTPUT" | head -1)
-    SSL_OK=$(echo "$NGINX_OUTPUT" | grep "^SSL_OK=" | cut -d= -f2 || echo "0")
+
+SSL_ENABLED=0
+if [ -n "$NGINX_DOMAIN" ]; then
     log_info "Nginx configured for domain: $NGINX_DOMAIN"
+
+    if [ "$IS_PREVIEW" = false ]; then
+        # Stage 6: Provision SSL certificate (non-blocking — HTTP fallback)
+        log_info "Stage 6: Provisioning SSL certificate for $NGINX_DOMAIN"
+        update_state "SSL_PROVISIONING"
+
+        # Collect custom domains for multi-domain cert
+        SSL_DOMAINS=("$NGINX_DOMAIN")
+        if [ -n "${CUSTOM_DOMAINS:-}" ]; then
+            IFS=',' read -ra CDS <<< "$CUSTOM_DOMAINS"
+            for CD in "${CDS[@]}"; do
+                read -r CD_TRIMMED <<< "$CD"
+                if [ -n "$CD_TRIMMED" ]; then
+                    SSL_DOMAINS+=("$CD_TRIMMED")
+                fi
+            done
+        fi
+
+        # Retry up to 3 times with 30s delay for DNS propagation
+        for attempt in 1 2 3; do
+            if ./provision-ssl.sh "${SSL_DOMAINS[@]}" 2>&1; then
+                SSL_ENABLED=1
+                log_info "SSL certificate provisioned successfully for ${SSL_DOMAINS[*]}"
+                nginx -s reload 2>/dev/null || systemctl reload nginx 2>/dev/null || log_warn "Could not reload nginx after SSL provisioning"
+                break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+                log_warn "SSL provisioning attempt $attempt failed — retrying in 30s (DNS propagation?)"
+                sleep 30
+            fi
+        done
+
+        if [ "$SSL_ENABLED" = "1" ]; then
+            log_info "HTTPS enabled for $NGINX_DOMAIN"
+        else
+            log_warn "SSL provisioning failed after 3 attempts — app accessible via HTTP only"
+        fi
+    fi
+
+    # Register domain with backend
     if [ "$IS_PREVIEW" = true ]; then
-        # Register preview domain in app config
         PREVIEW_DATA=$(export BRANCH HOST_PORT NGINX_DOMAIN DEPLOYMENT_ID; python3 -c "
 import os,json,sys
 sys.stdout.write(json.dumps({
@@ -188,13 +227,11 @@ sys.stdout.write(json.dumps({
             log_warn "Failed to build preview JSON payload"
         fi
     else
-        # Register production domain with backend
-        DOMAIN_DATA=$(export NGINX_DOMAIN SSL_OK; python3 -c "
+        DOMAIN_DATA=$(export NGINX_DOMAIN SSL_ENABLED; python3 -c "
 import os,json,sys
-ssl_val = os.environ.get('SSL_OK', '0')
 sys.stdout.write(json.dumps({
     'domain': os.environ['NGINX_DOMAIN'],
-    'ssl': ssl_val == '1'
+    'ssl': os.environ.get('SSL_ENABLED', '0') == '1'
 }))
 " 2>/dev/null || echo "")
         if [ -n "$DOMAIN_DATA" ]; then
