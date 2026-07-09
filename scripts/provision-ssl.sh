@@ -8,9 +8,9 @@ set -euo pipefail
 PRIMARY_DOMAIN="${1:-}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 
-log_info() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO]  $1"; }
-log_warn() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARN]  $1"; }
-log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $1"; }
+log_info() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO]  $1" >&2; }
+log_warn() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARN]  $1" >&2; }
+log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $1" >&2; }
 
 if [ -z "$PRIMARY_DOMAIN" ]; then
     log_error "No primary domain provided"

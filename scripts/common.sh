@@ -4,9 +4,9 @@
 REPOS_DIR="${REPOS_DIR:-/repos}"
 : "${DEPLOYMENT_ID:=-}"
 
-log_info()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO]  [$DEPLOYMENT_ID] $1"; }
-log_warn()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARN]  [$DEPLOYMENT_ID] $1"; }
-log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] [$DEPLOYMENT_ID] $1"; }
+log_info()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO]  [$DEPLOYMENT_ID] $1" >&2; }
+log_warn()  { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [WARN]  [$DEPLOYMENT_ID] $1" >&2; }
+log_error() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] [$DEPLOYMENT_ID] $1" >&2; }
 
 validate_args() {
   while [ "$#" -gt 0 ]; do
