@@ -41,11 +41,18 @@ if [ -n "$ADDITIONAL_DOMAINS" ]; then
 fi
 
 # Check if cert already exists and is valid for the primary domain
+# If so, run certbot install to wire it into nginx's config (which was
+# just regenerated HTTP-only by nginx-config.sh in pipeline Stage 5).
 CERT_FILE="/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem"
 if [ -f "$CERT_FILE" ]; then
     if openssl x509 -checkend $((30 * 86400)) -noout -in "$CERT_FILE" 2>/dev/null; then
-        log_info "Valid SSL certificate already exists for $PRIMARY_DOMAIN — skipping"
-        exit 0
+        log_info "Valid cert exists for $PRIMARY_DOMAIN — running certbot install to wire into nginx"
+        if certbot install --cert-name "$PRIMARY_DOMAIN" --nginx 2>&1; then
+            log_info "Nginx SSL config updated for $PRIMARY_DOMAIN (existing cert)"
+            exit 0
+        fi
+        log_error "certbot install failed for $PRIMARY_DOMAIN — app still accessible via HTTP only"
+        exit 1
     fi
     log_info "Existing certificate for $PRIMARY_DOMAIN expires soon — renewing"
 fi
@@ -57,7 +64,7 @@ fi
 
 # Run certbot
 if certbot "${CERTBOT_ARGS[@]}" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" 2>&1; then
-    log_info "SSL provisioned successfully for: $ALL_DOMAINS"
+    log_info "SSL certificate issued and configured for: $ALL_DOMAINS"
     exit 0
 else
     log_error "SSL provisioning failed for: $ALL_DOMAINS — app still accessible via HTTP"

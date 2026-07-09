@@ -190,7 +190,7 @@ if [ -n "$NGINX_DOMAIN" ]; then
         for attempt in 1 2 3; do
             if ./provision-ssl.sh "${SSL_DOMAINS[@]}" 2>&1; then
                 SSL_ENABLED=1
-                log_info "SSL certificate provisioned successfully for ${SSL_DOMAINS[*]}"
+                log_info "SSL ready for ${SSL_DOMAINS[*]}"
                 nginx -s reload 2>/dev/null || systemctl reload nginx 2>/dev/null || log_warn "Could not reload nginx after SSL provisioning"
                 break
             fi
