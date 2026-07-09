@@ -5,6 +5,7 @@
  */
 var fs = require('fs')
 var path = require('path')
+var execSync = require('child_process').execSync
 
 var OUT = path.join(__dirname, '..', 'out')
 var PASS = 0
@@ -13,6 +14,22 @@ var FAIL = 0
 function assert(condition, msg) {
   if (condition) { PASS++; console.log('  PASS: ' + msg) }
   else { FAIL++; console.error('  FAIL: ' + msg) }
+}
+
+function grepFile(filePath, pattern) {
+  var content = fs.readFileSync(filePath, 'utf-8')
+  return content.indexOf(pattern) !== -1
+}
+
+// Run the QA smoke test for non-root container support in deploy scripts
+try {
+  var qaResult = execSync('bash ../../test/qa-smoke.sh', { stdio: 'pipe', encoding: 'utf-8', timeout: 15000 })
+  console.log(qaResult.stdout)
+  assert(true, 'QA smoke test passed')
+} catch (qaErr) {
+  var output = qaErr.stdout || ''
+  console.log(output)
+  assert(false, 'QA smoke test failed: ' + (qaErr.stderr || qaErr.message))
 }
 
 function read(file) {

@@ -5,7 +5,7 @@ set -euo pipefail
 REPO_NAME="$1"
 DEPLOYMENT_ID="$2"
 HOST_PORT="$3"
-HEALTH_PATH=$4
+HEALTH_PATH="$4"
 
 validate_args "REPO_NAME" "$REPO_NAME" "DEPLOYMENT_ID" "$DEPLOYMENT_ID" "HOST_PORT" "$HOST_PORT"
 
@@ -23,7 +23,7 @@ if [ ! -d "$SOURCE_DIR" ]; then
     exit 1
 fi
 
-mkdir -p "$BACKUP_DIR"
+mkdir -p "$BACKUP_DIR" || { log_warn "Cannot create backup directory — continuing"; }
 BACKUP_FILE="$BACKUP_DIR/pre-deploy-$DEPLOYMENT_ID.tar.gz"
 
 log_info "Backing up current Sentinel to $BACKUP_FILE"
@@ -49,10 +49,14 @@ rsync -a --delete \
 }
 
 log_info "Installing dependencies"
-cd "$SENTINEL_HOME" || exit 1
-npm install --production 2>&1 | while IFS= read -r line; do log_info "npm: $line"; done
-if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-    log_error "npm install failed"
+cd "$SENTINEL_HOME" || { update_state "FAILED_AT_DEPLOY" "Cannot cd to SENTINEL_HOME"; exit 1; }
+set +e
+NPM_OUTPUT=$(npm install --production 2>&1)
+NPM_EXIT=$?
+set -e
+echo "$NPM_OUTPUT" | while IFS= read -r line; do log_info "npm: $line"; done
+if [ "$NPM_EXIT" -ne 0 ]; then
+    log_error "npm install failed (exit: $NPM_EXIT)"
     update_state "FAILED_AT_DEPLOY" "npm install failed"
     exit 1
 fi
@@ -60,10 +64,13 @@ fi
 chmod +x "$SENTINEL_HOME/scripts/"*.sh
 
 log_info "Reloading Sentinel via PM2"
-pm2 reload sentinel --update-env --wait-ready 2>&1 | while IFS= read -r line; do log_info "pm2: $line"; done
-RELOAD_EXIT=${PIPESTATUS[0]}
-if [ "$RELOAD_EXIT" -ne 0 ]; then
-    log_error "PM2 reload failed (exit: $RELOAD_EXIT)"
+set +e
+PM2_OUTPUT=$(pm2 reload sentinel --update-env --wait-ready 2>&1)
+PM2_EXIT=$?
+set -e
+echo "$PM2_OUTPUT" | while IFS= read -r line; do log_info "pm2: $line"; done
+if [ "$PM2_EXIT" -ne 0 ]; then
+    log_error "PM2 reload failed (exit: $PM2_EXIT)"
     update_state "FAILED_AT_DEPLOY" "PM2 reload failed"
     exit 1
 fi
@@ -87,7 +94,7 @@ if [ "$VERIFY_EXIT" -ne 0 ]; then
             update_state "FAILED" "Backup restore failed"
             exit 1
         }
-        cd "$SENTINEL_HOME" || exit 1
+        cd "$SENTINEL_HOME" || { update_state "FAILED" "Cannot cd to SENTINEL_HOME during rollback"; exit 1; }
         npm install --production 2>/dev/null || true
         chmod +x "$SENTINEL_HOME/scripts/"*.sh
         pm2 reload sentinel --update-env --wait-ready 2>&1 || {

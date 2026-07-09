@@ -2,7 +2,7 @@
 set -euo pipefail
 . ./common.sh
 
-REPO_NAME="$1"
+REPO_NAME="${1:-}"
 
 validate_args "REPO_NAME" "$REPO_NAME"
 
@@ -21,6 +21,11 @@ tar -czf "$BACKUP_DIR/$ARCHIVE_NAME" --exclude="backups" "$REPO_DIR" || exit 1
 
 cd "$BACKUP_DIR" || exit 1
 
-ls -tp *.tar.gz | tail -n +6 | xargs -r rm --
+shopt -s nullglob
+archives=(*.tar.gz)
+if [ "${#archives[@]}" -gt 5 ]; then
+    ls -tp "${archives[@]}" | tail -n +6 | xargs -r rm --
+fi
+shopt -u nullglob
 
 exit 0

@@ -53,18 +53,21 @@ DOCKER_OPTS=(-d --restart unless-stopped -p "$HOST_PORT:$CONTAINER_PORT" --name 
   --memory="512m" --cpus="1.0" \
   --security-opt=no-new-privileges:true \
   --cap-drop=ALL --cap-add=NET_BIND_SERVICE \
-  --user=1000:1000)
-if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
+  --user=1000:1000 \
+  --tmpfs /var/cache/nginx:uid=1000,gid=1000,size=32M \
+  --tmpfs /var/run:uid=1000,gid=1000,size=16M \
+  --tmpfs /tmp:uid=1000,gid=1000,size=64M)
+if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ] && [ -r "$ENV_FILE" ]; then
     DOCKER_OPTS+=(--env-file "$ENV_FILE")
     log_info "Using env file: $ENV_FILE"
 fi
 docker run "${DOCKER_OPTS[@]}" "$IMAGE_TAG" || { update_state "FAILED_AT_DEPLOY"; exit 1; }
 
-echo "$REPO_NAME" > "$ACTIVE_CONTAINER_FILE"
-echo "$IMAGE_TAG" > "$ACTIVE_IMAGE_FILE"
-echo "$HOST_PORT" > "$HOST_PORT_FILE"
-echo "$CONTAINER_PORT" > "$CONTAINER_PORT_FILE"
-echo "$HEALTH_PATH" > "$REPO_DIR/health_path.txt"
+echo "$REPO_NAME" > "$ACTIVE_CONTAINER_FILE" || { update_state "FAILED_AT_DEPLOY" "Cannot write active_container_file"; exit 1; }
+echo "$IMAGE_TAG" > "$ACTIVE_IMAGE_FILE" || { update_state "FAILED_AT_DEPLOY" "Cannot write active_image_file"; exit 1; }
+echo "$HOST_PORT" > "$HOST_PORT_FILE" || { update_state "FAILED_AT_DEPLOY" "Cannot write host_port_file"; exit 1; }
+echo "$CONTAINER_PORT" > "$CONTAINER_PORT_FILE" || { update_state "FAILED_AT_DEPLOY" "Cannot write container_port_file"; exit 1; }
+echo "$HEALTH_PATH" > "$REPO_DIR/health_path.txt" || { update_state "FAILED_AT_DEPLOY" "Cannot write health_path"; exit 1; }
 
 update_state "DEPLOYED"
 log_info "Deploy completed successfully"

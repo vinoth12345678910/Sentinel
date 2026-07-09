@@ -1,6 +1,5 @@
 #!/bin/bash
 set -euo pipefail
-#!/bin/bash
 # PM2-managed supervisor that keeps per-app monitors alive
 # Spawns monitor.sh for each deployed app and restarts on failure
 

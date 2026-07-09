@@ -54,7 +54,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-if [ -f "$LOCK_FILE" ]; then
+if [ -f "$LOCK_FILE" ] && [ "$(wc -l < "$LOCK_FILE" 2>/dev/null || echo 0)" -ge 3 ]; then
     {
         read -r LOCK_TIME
         read -r LOCK_PID
@@ -62,8 +62,14 @@ if [ -f "$LOCK_FILE" ]; then
     } < "$LOCK_FILE"
 
     AGE=$((CURRENT_TIME - LOCK_TIME))
+elif [ -f "$LOCK_FILE" ]; then
+    log_warn "Lock file is malformed — removing"
+    rm -f "$LOCK_FILE"
+fi
 
-    if [ -n "$LOCK_PID" ] && kill -0 "$LOCK_PID" 2>/dev/null && [ "$AGE" -lt 1800 ]; then
+if [ -n "${LOCK_PID:-}" ]; then
+
+    if kill -0 "$LOCK_PID" 2>/dev/null && [ "$AGE" -lt 1800 ]; then
         log_error "Deployment already running for $REPO_NAME (lock held by PID $LOCK_PID)"
         update_state "FAILED"
         exit 1
@@ -80,8 +86,9 @@ fi
 } > "$LOCK_FILE"
 
 log_info "Stage 1/5: Cloning/pulling repository"
-run_step "Clone/Pull" ./clone_pull.sh "$REPO_NAME" "$REPO_URL" "$COMMIT_HASH" "$DEPLOYMENT_ID" || {
+run_step "Clone/Pull" ./clone_pull.sh "$REPO_NAME" "$REPO_URL" "$COMMIT_HASH" "$DEPLOYMENT_ID" "$BRANCH" || {
     log_error "Clone/pull failed"
+    update_state "FAILED_AT_CLONE"
     exit 1
 }
 
@@ -163,20 +170,41 @@ if [ "$NGINX_OUTPUT" != "||FAILED||" ]; then
     log_info "Nginx configured for domain: $NGINX_DOMAIN"
     if [ "$IS_PREVIEW" = true ]; then
         # Register preview domain in app config
-        PREVIEW_DATA=$(cat <<JSONEOF
-{"preview_branch":"$BRANCH","host_port":$HOST_PORT,"domain":"$NGINX_DOMAIN","deployment_id":"$DEPLOYMENT_ID"}
-JSONEOF
-)
-        curl -s -o /dev/null -X PUT "$BACKEND_URL/apps/$REPO_NAME/previews/$BRANCH" \
-            -H "Content-Type: application/json" \
-            -H "x-api-key: $SENTINEL_API_KEY" \
-            -d "$PREVIEW_DATA" || log_warn "Failed to register preview with backend"
+        PREVIEW_DATA=$(export BRANCH HOST_PORT NGINX_DOMAIN DEPLOYMENT_ID; python3 -c "
+import os,json,sys
+sys.stdout.write(json.dumps({
+    'preview_branch': os.environ['BRANCH'],
+    'host_port': int(os.environ['HOST_PORT']),
+    'domain': os.environ['NGINX_DOMAIN'],
+    'deployment_id': os.environ['DEPLOYMENT_ID']
+}))
+" 2>/dev/null || echo "")
+        if [ -n "$PREVIEW_DATA" ]; then
+            curl -s -o /dev/null -X PUT "$BACKEND_URL/apps/$REPO_NAME/previews/$BRANCH" \
+                -H "Content-Type: application/json" \
+                -H "x-api-key: $SENTINEL_API_KEY" \
+                -d "$PREVIEW_DATA" || log_warn "Failed to register preview with backend"
+        else
+            log_warn "Failed to build preview JSON payload"
+        fi
     else
         # Register production domain with backend
-        curl -s -o /dev/null -X PATCH "$BACKEND_URL/apps/$REPO_NAME/domain" \
-            -H "Content-Type: application/json" \
-            -H "x-api-key: $SENTINEL_API_KEY" \
-            -d "{\"domain\":\"$NGINX_DOMAIN\",\"ssl\":${SSL_OK:-false}}" || log_warn "Failed to register domain with backend"
+        DOMAIN_DATA=$(export NGINX_DOMAIN SSL_OK; python3 -c "
+import os,json,sys
+ssl_val = os.environ.get('SSL_OK', '0')
+sys.stdout.write(json.dumps({
+    'domain': os.environ['NGINX_DOMAIN'],
+    'ssl': ssl_val == '1'
+}))
+" 2>/dev/null || echo "")
+        if [ -n "$DOMAIN_DATA" ]; then
+            curl -s -o /dev/null -X PATCH "$BACKEND_URL/apps/$REPO_NAME/domain" \
+                -H "Content-Type: application/json" \
+                -H "x-api-key: $SENTINEL_API_KEY" \
+                -d "$DOMAIN_DATA" || log_warn "Failed to register domain with backend"
+        else
+            log_warn "Failed to build domain JSON payload"
+        fi
     fi
 else
     log_warn "Nginx config generation failed — deployment still healthy but may not be accessible via domain"

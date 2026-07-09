@@ -21,14 +21,15 @@ NGINX_ENABLED="/etc/nginx/sites-enabled"
 CONFIG_FILE="sentinel-$(echo "$DOMAIN" | sed 's/[^a-zA-Z0-9-]/-/g').conf"
 CONFIG_PATH="$NGINX_AVAILABLE/$CONFIG_FILE"
 
-mkdir -p "$NGINX_AVAILABLE" "$NGINX_ENABLED"
+mkdir -p "$NGINX_AVAILABLE" "$NGINX_ENABLED" || { log_error "Cannot create nginx config directories"; exit 1; }
 
 # Build server_name with all domains
 SERVER_NAME="$DOMAIN"
 if [ -n "${CUSTOM_DOMAINS:-}" ]; then
     IFS=',' read -ra DOMAINS <<< "$CUSTOM_DOMAINS"
     for CD in "${DOMAINS[@]}"; do
-        CD_TRIMMED=$(echo "$CD" | xargs)
+        # trim whitespace using read
+        read -r CD_TRIMMED <<< "$CD"
         if [ -n "$CD_TRIMMED" ]; then
             SERVER_NAME="$SERVER_NAME $CD_TRIMMED"
         fi
@@ -72,17 +73,19 @@ log_info "Nginx config live: http://$DOMAIN → localhost:$HOST_PORT"
 # Provision SSL if possible (non-blocking — app works via HTTP even if SSL fails)
 SSL_OK=0
 if [ -f "./provision-ssl.sh" ]; then
-    CUSTOM_DOMAINS_LIST=""
+    CUSTOM_DOMAINS_ARGS=()
     if [ -n "${CUSTOM_DOMAINS:-}" ]; then
         IFS=',' read -ra DOMAINS <<< "$CUSTOM_DOMAINS"
         for CD in "${DOMAINS[@]}"; do
-            CUSTOM_DOMAINS_LIST="$CUSTOM_DOMAINS_LIST $(echo "$CD" | xargs)"
+            read -r CD_TRIMMED <<< "$CD"
+            if [ -n "$CD_TRIMMED" ]; then
+                CUSTOM_DOMAINS_ARGS+=("$CD_TRIMMED")
+            fi
         done
     fi
-    # shellcheck disable=SC2086
-    if ./provision-ssl.sh "$DOMAIN" $CUSTOM_DOMAINS_LIST 2>&1; then
+    if ./provision-ssl.sh "$DOMAIN" "${CUSTOM_DOMAINS_ARGS[@]}" 2>&1; then
         SSL_OK=1
-        log_info "SSL provisioned for $DOMAIN $CUSTOM_DOMAINS_LIST"
+        log_info "SSL provisioned for $DOMAIN"
     fi
 fi
 

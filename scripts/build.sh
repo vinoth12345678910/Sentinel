@@ -15,14 +15,14 @@ IMAGE_TAG="$IMAGE_NAME:$DEPLOYMENT_ID"
 SOURCE_DIR="$REPOS_DIR/$REPO_NAME/source"
 BUILDS_DIR="$REPOS_DIR/$REPO_NAME/builds"
 
-mkdir -p "$BUILDS_DIR"
+mkdir -p "$BUILDS_DIR" || { update_state "FAILED_AT_BUILD" "Cannot create builds directory"; exit 1; }
 
-cd "$SOURCE_DIR" || { update_state "FAILED_AT_BUILD"; exit 1; }
+cd "$SOURCE_DIR" || { update_state "FAILED_AT_BUILD" "Cannot cd to source dir"; exit 1; }
 
 docker build -t "$IMAGE_TAG" . || { update_state "FAILED_AT_BUILD"; exit 1; }
 
 BUILD_FILE="$BUILDS_DIR/current_build.txt"
-echo "$IMAGE_TAG" > "$BUILD_FILE"
+echo "$IMAGE_TAG" > "$BUILD_FILE" || { update_state "FAILED_AT_BUILD" "Cannot write build file"; exit 1; }
 
 cd "$BUILDS_DIR" || { update_state "FAILED_AT_BUILD"; exit 1; }
 

@@ -36,7 +36,7 @@ do
         continue
     fi
 
-    STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$HEALTH_URL")
+    STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$HEALTH_URL" 2>/dev/null || echo "000")
 
     FAILURE_COUNT=$(cat "$FAILURE_COUNT_FILE")
 
@@ -63,7 +63,7 @@ do
 
             HOST_PORT=$(cat "$HOST_PORT_FILE" 2>/dev/null || echo "3000")
             CONTAINER_PORT=$(cat "$CONTAINER_PORT_FILE" 2>/dev/null || echo "3000")
-            ./rollback.sh "$REPO_NAME" "monitor-triggered" "$HEALTH_URL" "$HOST_PORT" "$CONTAINER_PORT"
+            ./rollback.sh "$REPO_NAME" "monitor-triggered" "$HEALTH_URL" "$HOST_PORT" "$CONTAINER_PORT" || log_error "Rollback triggered by monitor failed"
             echo "0" > "$FAILURE_COUNT_FILE"
         fi
     fi

@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage: ./provision-ssl.sh <primary-domain> [additional-domain ...]
 # Exits 0 on success, 1 on failure (deployment continues regardless)
 
-PRIMARY_DOMAIN="$1"
+PRIMARY_DOMAIN="${1:-}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 
 log_info() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [INFO]  $1"; }
@@ -29,17 +29,21 @@ done
 
 log_info "Provisioning SSL for: $ALL_DOMAINS"
 
-# Build certbot args
-CERTBOT_ARGS="--nginx -d $PRIMARY_DOMAIN"
+# Build certbot args using array
+CERTBOT_ARGS=(--nginx -d "$PRIMARY_DOMAIN")
 if [ -n "$ADDITIONAL_DOMAINS" ]; then
-    for AD in $ADDITIONAL_DOMAINS; do
-        CERTBOT_ARGS="$CERTBOT_ARGS -d $AD"
+    read -ra DOMAIN_PARTS <<< "$ADDITIONAL_DOMAINS"
+    for AD in "${DOMAIN_PARTS[@]}"; do
+        if [ -n "$AD" ]; then
+            CERTBOT_ARGS+=(-d "$AD")
+        fi
     done
 fi
 
 # Check if cert already exists and is valid for the primary domain
-if [ -d "/etc/letsencrypt/live/$PRIMARY_DOMAIN" ]; then
-    if openssl x509 -checkend $((30 * 86400)) -noout -in "/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem" 2>/dev/null; then
+CERT_FILE="/etc/letsencrypt/live/$PRIMARY_DOMAIN/fullchain.pem"
+if [ -f "$CERT_FILE" ]; then
+    if openssl x509 -checkend $((30 * 86400)) -noout -in "$CERT_FILE" 2>/dev/null; then
         log_info "Valid SSL certificate already exists for $PRIMARY_DOMAIN — skipping"
         exit 0
     fi
@@ -52,7 +56,7 @@ if [ -z "$CERTBOT_EMAIL" ]; then
 fi
 
 # Run certbot
-if certbot $CERTBOT_ARGS --non-interactive --agree-tos -m "$CERTBOT_EMAIL" 2>&1; then
+if certbot "${CERTBOT_ARGS[@]}" --non-interactive --agree-tos -m "$CERTBOT_EMAIL" 2>&1; then
     log_info "SSL provisioned successfully for: $ALL_DOMAINS"
     exit 0
 else
