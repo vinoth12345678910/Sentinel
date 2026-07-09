@@ -210,6 +210,7 @@ router.get('/apps/:repoName/custom-domains', authMiddleware, apiRateLimiter, (re
   }
 
   if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
+  const app = appConfigService.getAppConfig(repoName);
 
   const customDomains = app.custom_domains || {};
   const list = Object.entries(customDomains).map(([domain, info]) => ({
@@ -267,6 +268,7 @@ router.delete('/apps/:repoName/custom-domains/:domain', authMiddleware, apiRateL
   }
 
   if (!requireAppOwnership(repoName, req.user.id)) return res.status(404).json({ message: 'App not found' });
+  const app = appConfigService.getAppConfig(repoName);
 
   const customDomains = app.custom_domains || {};
   if (!customDomains[domain]) {
