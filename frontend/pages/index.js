@@ -314,6 +314,54 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Prerequisites for deploying on Sentinel */}
+      <section className="py-44 px-8">
+        <div className="max-w-6xl mx-auto">
+          <motion.span
+            initial={{ opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-xs font-semibold tracking-[0.25em] uppercase text-cyan-400 mb-6 block"
+          >
+            What your app needs
+          </motion.span>
+          <motion.h2
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-24 tracking-tight leading-[1.05]"
+          >
+            Prerequisites.
+            <br />
+            Minimal, intentional.
+          </motion.h2>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              { icon: <Terminal className="w-5 h-5" />, title: 'Dockerfile', desc: 'Your repo must contain a Dockerfile at the root. Sentinel builds it automatically on every push.' },
+              { icon: <Globe className="w-5 h-5" />, title: 'Port', desc: 'Your app must listen on the port you configure (default 3000). The container port is mapped to an available host port.' },
+              { icon: <Activity className="w-5 h-5" />, title: 'Health check', desc: 'A GET /api/health (or custom path) that returns 200. Sentinel waits for 3 consecutive passes before switching traffic.' },
+              { icon: <HardDrive className="w-5 h-5" />, title: 'No root user', desc: 'Containers run as non-root (uid:1000) with no-new-privileges and all capabilities dropped except NET_BIND_SERVICE.' },
+            ].map((item, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="group p-6 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04] hover:border-cyan-400/20 transition-all"
+              >
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400/10 to-blue-500/10 border border-cyan-400/10 flex items-center justify-center text-cyan-400 mb-5 group-hover:scale-110 transition-transform">
+                  {item.icon}
+                </div>
+                <h3 className="text-lg font-semibold text-white mb-2">{item.title}</h3>
+                <p className="text-sm text-slate-400 leading-relaxed">{item.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Dashboard showcase — wide */}
       <section className="py-44 px-8">
         <div className="max-w-[1400px] mx-auto">

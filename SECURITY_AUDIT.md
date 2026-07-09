@@ -272,4 +272,49 @@ All core routes use the same `apiRateLimiter` instance (60 req/min total). This 
 
 ---
 
+## Post-Audit Resolutions — Hurdles & Conflicts
+
+Several non-security issues were discovered and resolved during the hardening process. These are documented here because they affected reliability, data integrity, and HTTPS stability as much as security did.
+
+### 1. Dual-Storage Inconsistency (SQLite ↔ JSON)
+
+**Hurdle:** The codebase stored app configurations in two places — SQLite `app_configs` table and JSON files under `data/apps/`. Reads went to either store depending on the code path, and writes were not synchronized. JSON files accumulated orphaned entries, and `GET /apps` leaked cross-user data because it queried without filtering by `user_id`.
+
+**Conflict:** The deployments system relied on JSON files for rollback scripts running on the VPS, but the app config API used SQLite. Making SQLite the sole source of truth for configs while keeping JSON for deployments required careful separation.
+
+**Resolution:** SQLite became the single source of truth for app configs. Migration v3 added `user_id`, `domain`, `ssl`, `custom_domains`, and `previews` columns. All JSON file reads/writes were removed. Deployments stayed in JSON files (they are consumed by `rollback.sh` on the VPS, which has no Node.js/SQLite access). The dead `deployments` SQLite table was left in schema but unused.
+
+### 2. Pipeline Domain Capture Contamination
+
+**Hurdle:** `pipeline.sh` captured the nginx domain via `NGINX_DOMAIN=$(run_step ./nginx-config.sh ...)`. Everything printed to stdout by `nginx-config.sh` ended up in this variable — including log lines from `log_info()` and the output of `nginx -t`. The resulting garbage string was passed to certbot as a `-d` argument and written to `app_configs.domain`.
+
+**Conflict:** Shell functions cannot return values — they must use stdout. But stdout was also the intended channel for log output and diagnostic commands. Resolving this required distinguishing "intended return value" from "diagnostic output" across three separate scripts.
+
+**Resolution (three rounds):**
+- All `log_info`/`log_warn`/`log_error` functions redirected to stderr (`>&2`).
+- `nginx -t` and `systemctl reload nginx` output redirected to `/dev/null`.
+- The only remaining stdout from `nginx-config.sh` is the final `echo "$DOMAIN"`.
+
+### 3. SSL Config Wiped on Every Deploy
+
+**Hurdle:** Every deploy writes a fresh HTTP-only nginx config. If a valid Let's Encrypt cert existed from a previous deploy, `provision-ssl.sh` correctly skipped re-issuance (no rate-limit waste) but did nothing to re-add the SSL block. HTTPS was silently broken with valid certs on disk.
+
+**Conflict:** `nginx-config.sh` has no knowledge of certbot-managed SSL configs, and should not — its single responsibility is generating HTTP reverse proxy configs. But `provision-ssl.sh`'s skip path assumed the config was already wired, which was only true on the first deploy.
+
+**Resolution:** The skip path now runs `certbot install --cert-name "$PRIMARY_DOMAIN" --nginx`, which edits the HTTP-only nginx config to add `listen 443 ssl`, certificate paths, and HTTP→HTTPS redirect without contacting Let's Encrypt. This keeps the responsibility boundary intact: `nginx-config.sh` owns HTTP configs, certbot owns SSL wiring.
+
+### 4. Admin API Key vs. App Ownership
+
+**Hurdle:** The pipeline calls `PATCH /apps/:repoName/domain` and `GET /apps/:repoName` using `SENTINEL_API_KEY` (user id 0). The `requireAppOwnership` middleware rejected these because apps are owned by real users (id ≥ 1).
+
+**Resolution:** Added early return in `requireAppOwnership` — if `userId === 0`, bypass the check. The admin API key is already a full-access secret trusted by deployment state endpoints, so the same trust applies to ownership.
+
+### 5. Missing Deployment Status
+
+**Hurdle:** The app detail endpoint returned configuration only — no deployment status. Users had to check deployment logs separately to know whether their app was healthy, deploying, or failed.
+
+**Resolution:** Added `latestDeploymentStatus()` helper that reads the latest deployment JSON file and appends a `status` field to app responses. `GET /apps` also returns status for admin users.
+
+---
+
 _Marked for follow-up: CORS_ORIGIN env, ALLOWED_HOSTS env, trusted registry, seccomp profile, read-only rootfs._

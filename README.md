@@ -170,6 +170,60 @@ Configure nginx as a reverse proxy with Let's Encrypt SSL (see `nginx.conf`).
 - **Scripts update state via API** — Each pipeline step calls `PATCH /deployments/:id` with status updates using `SENTINEL_API_KEY`
 - **`REPOS_DIR` override** — All scripts read `$REPOS_DIR` (default `/repos`), overridable via environment variable for local testing
 
+## What We Fixed — The Journey
+
+Sentinel went through several architectural hurdles to reach production stability. Here is what was found, what conflicted, and how each was resolved.
+
+### 1. Dual-Storage Inconsistency (SQLite ↔ JSON)
+
+**Problem:** App configurations were written to both SQLite (`app_configs` table) and JSON files (`data/apps/*.json`). The two stores drifted — JSON files were orphaned or stale, and reads from different code paths returned different data. Cross-user data leaks occurred when `GET /apps` returned every app regardless of ownership.
+
+**Fix:** Removed all JSON file reads/writes. SQLite became the single source of truth. Created migration v3 adding `user_id`, `domain`, `ssl`, and `previews` columns to `app_configs`. Queries were scoped to `req.user.id`. Dual-write paths in `POST /apps/import` and `DELETE /apps/:repoName` were deleted.
+
+### 2. Pipeline Domain Capture Contaminated by Log Output
+
+**Problem:** `pipeline.sh` captured the nginx domain via `NGINX_DOMAIN=$(./nginx-config.sh ...)`. But `nginx-config.sh` called `log_info` (which wrote to stdout), and `nginx -t` (which printed "syntax is ok" / "test is successful" to stdout). Both leaked into the captured variable, producing garbage like:
+```
+[INFO] Generating Nginx config for test.vinoth-sntl.uk...
+nginx: the configuration file syntax is ok
+test.vinoth-sntl.uk
+```
+This multi-line string was then passed to certbot (`-d` argument) causing "Non-ASCII domain names not supported" and written to `app_configs.domain` corrupting the database.
+
+**Fix (three rounds):**
+- Round 1: Redirected all `log_info`/`log_warn`/`log_error` functions to stderr (`>&2`) in `common.sh` and `provision-ssl.sh`.
+- Round 2: Redirected `nginx -t` and `systemctl reload nginx` output to `/dev/null` so only the final `echo "$DOMAIN"` reaches stdout.
+- Round 3: Added `certbot install --cert-name DOMAIN --nginx` to the existing-cert path so the SSL block is re-wired into freshly generated HTTP-only nginx configs.
+
+### 3. SSL Config Wiped Every Deploy
+
+**Problem:** `nginx-config.sh` always wrote a fresh HTTP-only nginx config on every deploy. If a valid Let's Encrypt cert already existed from a previous deploy, `provision-ssl.sh` skipped re-issuance but also did nothing to re-wire the cert — leaving HTTPS silently broken despite valid cert files on disk.
+
+**Fix:** Replaced the empty `exit 0` skip with `certbot install --cert-name "$PRIMARY_DOMAIN" --nginx`. This tells certbot: "edit the nginx server block to add `listen 443 ssl`, `ssl_certificate`, and HTTP→HTTPS redirect without requesting a new certificate." No Let's Encrypt rate-limit is consumed.
+
+### 4. Admin API Key Bypass for Pipeline Backend Calls
+
+**Problem:** The pipeline sends API requests to the backend with the `SENTINEL_API_KEY` (user id 0). But `requireAppOwnership` rejected these because apps are owned by real user ids (≥ 1). This broke `PATCH /apps/:repoName/domain` and `GET /apps/:repoName` when called from shell scripts.
+
+**Fix:** Added an early return in `requireAppOwnership`: if `userId === 0`, return truthy immediately. The admin API key is already a full-access secret (the deployment state endpoint trusts it the same way), so the same trust level applies to ownership checks.
+
+### 5. Deployment Status Not Visible in App Detail
+
+**Problem:** `GET /apps/:repoName` returned app config but no deployment status. Users had no way to see if their app was healthy, deploying, or failed from the API.
+
+**Fix:** Added `latestDeploymentStatus()` helper that reads the latest deployment from JSON files (the deployment source of truth for shell rollback scripts) and appends a `status` field to the app response. `GET /apps` also adds status for admin users.
+
+### Summary
+
+| Issue | Category | Resolution |
+|-------|----------|------------|
+| SQLite/JSON dual-write | Data integrity | SQLite single source of truth |
+| Log output in command substitution | Pipeline reliability | `>&2` redirect on all log functions |
+| `nginx -t` stdout leak | Pipeline reliability | `>/dev/null 2>&1` on `nginx -t` |
+| SSL config lost on redeploy | HTTPS reliability | `certbot install` instead of skip |
+| Admin API key rejected | Auth | Ownership bypass for user id 0 |
+| No deployment status | UX | `latestDeploymentStatus()` API |
+
 ## License
 
 MIT
