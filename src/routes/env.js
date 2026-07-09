@@ -13,6 +13,7 @@ const { validateRepoName } = require('../middleware/validateInput');
 const router = express.Router();
 
 function requireAppOwnership(repoName, userId) {
+  if (userId === 0) return { id: -1 }; // admin API key — bypass ownership check
   const db = getDb();
   return db.prepare('SELECT id FROM app_configs WHERE repo_name = ? AND user_id = ?').get(repoName, userId);
 }

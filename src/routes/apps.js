@@ -11,14 +11,33 @@ const { validateRepoName } = require('../middleware/validateInput');
 const router = express.Router();
 
 function requireAppOwnership(repoName, userId) {
+  if (userId === 0) return { id: -1 }; // admin API key — bypass ownership check
   const db = require('../db').getDb();
   return db.prepare('SELECT id FROM app_configs WHERE repo_name = ? AND user_id = ?').get(repoName, userId);
 }
 
+function latestDeploymentStatus(repoName) {
+  try {
+    const deps = require('../services/deploymentService').listByApp(repoName);
+    if (deps.length === 0) return 'inactive';
+    const latest = deps.reduce((a, b) => new Date(a.created_at) > new Date(b.created_at) ? a : b);
+    return latest.state || 'inactive';
+  } catch { return 'inactive'; }
+}
+
 router.get('/apps', authMiddleware, apiRateLimiter, (req, res) => {
   const db = require('../db').getDb();
-  const rows = db.prepare('SELECT repo_name FROM app_configs WHERE user_id = ?').all(req.user.id);
-  const apps = rows.map(r => appConfigService.getAppConfig(r.repo_name)).filter(Boolean);
+  let rows;
+  if (req.user.id === 0) {
+    rows = db.prepare('SELECT repo_name FROM app_configs').all();
+  } else {
+    rows = db.prepare('SELECT repo_name FROM app_configs WHERE user_id = ?').all(req.user.id);
+  }
+  const apps = rows.map(r => {
+    const cfg = appConfigService.getAppConfig(r.repo_name);
+    if (cfg) cfg.status = latestDeploymentStatus(r.repo_name);
+    return cfg;
+  }).filter(Boolean);
   res.json(apps);
 });
 
@@ -27,12 +46,11 @@ router.get('/apps/:repoName', authMiddleware, apiRateLimiter, (req, res) => {
   if (!validateRepoName(repoName)) {
     return res.status(400).json({ message: 'Invalid repository name' });
   }
-  const db = require('../db').getDb();
-  const row = db.prepare('SELECT id FROM app_configs WHERE repo_name = ? AND user_id = ?').get(repoName, req.user.id);
-  if (!row) {
+  if (!requireAppOwnership(repoName, req.user.id)) {
     return res.status(404).json({ message: 'App not found' });
   }
   const config = appConfigService.getAppConfig(repoName);
+  if (config) config.status = latestDeploymentStatus(repoName);
   res.json(config);
 });
 
