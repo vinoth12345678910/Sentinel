@@ -9,7 +9,6 @@ data/apps/*.json
 data/sentinel.db
 data/sentinel.db-shm
 data/sentinel.db-wal
-!data/apps/Sentinel.json
 repos/
 logs/*.log
 *.tar.gz

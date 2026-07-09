@@ -38,6 +38,23 @@ function runMigrations() {
     }
     db.prepare('INSERT INTO _schema_version (version) VALUES (2)').run();
   }
+
+  if (version < 3) {
+    const cols = ['domain', 'ssl', 'custom_domains', 'previews', 'user_id'];
+    for (const col of cols) {
+      const exists = db.prepare(`SELECT COUNT(*) as c FROM pragma_table_info('app_configs') WHERE name = '${col}'`).get().c > 0;
+      if (!exists) {
+        switch (col) {
+          case 'domain': db.exec("ALTER TABLE app_configs ADD COLUMN domain TEXT"); break;
+          case 'ssl': db.exec("ALTER TABLE app_configs ADD COLUMN ssl INTEGER DEFAULT 0"); break;
+          case 'custom_domains': db.exec("ALTER TABLE app_configs ADD COLUMN custom_domains TEXT DEFAULT '{}'"); break;
+          case 'previews': db.exec("ALTER TABLE app_configs ADD COLUMN previews TEXT DEFAULT '{}'"); break;
+          case 'user_id': db.exec("ALTER TABLE app_configs ADD COLUMN user_id INTEGER REFERENCES users(id)"); break;
+        }
+      }
+    }
+    db.prepare('INSERT INTO _schema_version (version) VALUES (3)').run();
+  }
 }
 
 function initSchema() {
@@ -85,6 +102,11 @@ function initSchema() {
       host_port INTEGER,
       is_sentinel INTEGER DEFAULT 0,
       project_id INTEGER,
+      user_id INTEGER REFERENCES users(id),
+      domain TEXT,
+      ssl INTEGER DEFAULT 0,
+      custom_domains TEXT DEFAULT '{}',
+      previews TEXT DEFAULT '{}',
       registered_at TEXT,
       updated_at TEXT,
       FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL

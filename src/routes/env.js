@@ -123,7 +123,6 @@ router.delete('/apps/:repoName', authMiddleware, apiRateLimiter, (req, res) => {
     const db = getDb();
     db.prepare('DELETE FROM app_env_vars WHERE repo_name = ?').run(repoName);
     db.prepare('DELETE FROM deployments WHERE repo_name = ?').run(repoName);
-    db.prepare('DELETE FROM app_configs WHERE repo_name = ?').run(repoName);
     appConfigService.deleteAppConfigFile(repoName);
 
     const repoDir = path.join(config.REPOS_BASE_PATH, repoName);

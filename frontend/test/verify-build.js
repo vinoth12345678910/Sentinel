@@ -23,7 +23,7 @@ function grepFile(filePath, pattern) {
 
 // Run the QA smoke test for non-root container support in deploy scripts
 try {
-  var qaResult = execSync('bash ../../test/qa-smoke.sh', { stdio: 'pipe', encoding: 'utf-8', timeout: 15000 })
+  var qaResult = execSync('bash "' + path.join(__dirname, '..', '..', 'test', 'qa-smoke.sh') + '"', { stdio: 'pipe', encoding: 'utf-8', timeout: 15000 })
   console.log(qaResult.stdout)
   assert(true, 'QA smoke test passed')
 } catch (qaErr) {

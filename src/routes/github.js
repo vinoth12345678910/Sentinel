@@ -83,7 +83,7 @@ router.get('/github/repos', authMiddleware, apiRateLimiter, async (req, res) => 
     }
 
     const repos = await githubService.listUserRepos(token);
-    const appConfigs = appConfigService.getAllAppConfigs();
+    const appConfigs = appConfigService.getAllAppConfigs(req.user.id);
     const registeredRepos = new Set(appConfigs.map(a => a.repo_name.toLowerCase()));
 
     const result = repos
@@ -142,27 +142,22 @@ router.post('/apps/import', authMiddleware, apiRateLimiter, async (req, res) => 
     if (health_path !== undefined) overrides.health_path = health_path;
     if (env !== undefined) overrides.env = env;
 
-    appConfigService.createAppConfig(repo_name, repo_url);
+    appConfigService.createAppConfig(repo_name, repo_url, req.user.id);
     if (Object.keys(overrides).length > 0) {
       appConfigService.updateAppConfig(repo_name, overrides);
     }
 
-    const db = require('../db').getDb();
-    db.prepare('INSERT OR IGNORE INTO app_configs (repo_name, repo_url) VALUES (?, ?)').run(repo_name, repo_url);
     if (project_id) {
+      const db = require('../db').getDb();
       const proj = db.prepare('SELECT id FROM projects WHERE id = ? AND user_id = ?').get(project_id, req.user.id);
       if (proj) {
         db.prepare('UPDATE app_configs SET project_id = ? WHERE repo_name = ?').run(project_id, repo_name);
       }
     }
 
-    db.prepare('UPDATE app_configs SET user_id = ? WHERE repo_name = ?').run(req.user.id, repo_name);
-
     logger.log(repo_name, 'INFO', '-', 'App imported from GitHub');
 
     const appConfig = appConfigService.getAppConfig(repo_name);
-    const row = db.prepare('SELECT project_id FROM app_configs WHERE repo_name = ?').get(repo_name);
-    appConfig.project_id = row ? row.project_id : null;
 
     try {
       let defaultBranch = 'main';
